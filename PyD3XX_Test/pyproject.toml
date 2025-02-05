@@ -1,0 +1,28 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm.build]
+includes = ["src/PyD3XX/"]
+
+[project]
+name = "PyD3XX"
+version = "1.0.28"
+authors = [
+  { name="Hector Soto", email="hector.soto@ftdichip.com" },
+]
+description = "An unofficial Python wrapper for the FTDI D3XX library."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+keywords = ["FTDI", "ftdichip", "PyD3XX", "D3XX", "FTD3XX", "FT600", "FT601"]
+
+[project.urls]
+GitHub_Repo = "https://github.com/S-Hector/PyD3XX"
+FTDI_Homepage = "https://ftdichip.com/"
+FTDI_D3XX_Drivers = "https://ftdichip.com/drivers/d3xx-drivers/"
+D3XX_Programming_Guide = "https://ftdichip.com/wp-content/uploads/2020/08/AN_379-D3xx-Programmers-Guide-1.pdf"
