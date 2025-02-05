@@ -28,7 +28,7 @@ _DriverIsWinUSB = False
 # ---| Python Library Specific Definitions |---
 
 VERSION = "1.0.2"
-VERSION_TEST = "1.0.28_syngraféas"
+VERSION_TEST = "1.0.29_tractamus_medium_cimex"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -462,9 +462,11 @@ _Python64 = (ctypes.sizeof(ctypes.c_void_p) == 8) # True if 64-bit version of Py
 
 # Check if system has WinUSB D3XX driver installed.
 if Platform == "windows":
-    _SearchWinUSB = subprocess.Popen("pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
     try:
-        #_DriverIsFTDIBUS3 = subprocess.check_output("findstr \"ftd3xxwu.inf\"", shell=False, stdin=_SearchWinUSB.stdout)
+        _SearchWinUSB = subprocess.Popen("pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+    except:
+        _SearchWinUSB = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+    try:
         _DriverIsWinUSB = _SearchWinUSB.decode("ascii")
         if "ftd3xxwu.inf" in _DriverIsWinUSB:
             _DriverIsWinUSB = True
