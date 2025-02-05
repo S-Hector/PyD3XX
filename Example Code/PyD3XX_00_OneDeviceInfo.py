@@ -1,6 +1,6 @@
 import PyD3XX
 
-PyD3XX.SetPrintLevel(PyD3XX.PRINT_ALL) # Make PyD3XX not print anything.
+PyD3XX.SetPrintLevel(PyD3XX.PRINT_NONE) # Make PyD3XX not print anything.
 
 DeviceCount = 0
 
