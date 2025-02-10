@@ -24,25 +24,25 @@ for i in range(2): # Get in and out pipes for channel 1.
         print("FAILED TO GET PIPE INFO OF [1," + str(i) +"]: ABORTING")
         exit()
 if(PyD3XX.Platform == "linux") or (PyD3XX.Platform == "darwin"):
-    Status, ReadBuffer, BytesRead = PyD3XX.FT_ReadPipeAsync(Device, 0, 1, 0)
+    Status, ReadBuffer, BytesRead = PyD3XX.FT_ReadPipe(Device, int("0x82", 16), 1, 0)
 else:
     Status, ReadBuffer, BytesRead = PyD3XX.FT_ReadPipe(Device, Pipes[1], 1, PyD3XX.NULL)
 if(Status == PyD3XX.FT_OK):
     ReadValue = format(int.from_bytes(ReadBuffer.Value(), "little"), "x").zfill(1*2)
     print("Channel 1 = 0x" + ReadValue)
 else:
-    print("Failed to read data!: ABORTING")
+    print(PyD3XX.FT_STATUS_STR[Status] + " | Failed to read data!: ABORTING")
     exit()
 WriteBuffer = PyD3XX.FT_Buffer.from_int(int.from_bytes(ReadBuffer.Value(), "little") + 1)
 if(PyD3XX.Platform == "linux") or (PyD3XX.Platform == "darwin"):
-    Status, BytesWrote = PyD3XX.FT_WritePipeAsync(Device, 0, WriteBuffer, 1, PyD3XX.NULL)
+    Status, BytesWrote = PyD3XX.FT_WritePipe(Device, int("0x02", 16), WriteBuffer, 1, 0)
 else:
     Status, BytesWrote = PyD3XX.FT_WritePipe(Device, Pipes[0], WriteBuffer, 1, PyD3XX.NULL)
 if(Status == PyD3XX.FT_OK):
     WriteValue = format(int.from_bytes(WriteBuffer.Value(), "little"), "x").zfill(1*2)
     print("Wrote 0x" + WriteValue + " to Channel 1!")
 else:
-    print("Failed to write data!: ABORTING")
+    print(PyD3XX.FT_STATUS_STR[Status] + " | Failed to write data!: ABORTING")
     exit()
 
 PyD3XX.FT_Close(Device)

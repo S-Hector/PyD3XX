@@ -35,7 +35,7 @@ else:
     exit()
 WriteBuffer = PyD3XX.FT_Buffer.from_int(int.from_bytes(ReadBuffer.Value(), "little") + 1)
 if(PyD3XX.Platform == "linux") or (PyD3XX.Platform == "darwin"):
-    Status, BytesWrote = PyD3XX.FT_WritePipeEx(Device, 0, WriteBuffer, 1, PyD3XX.NULL)
+    Status, BytesWrote = PyD3XX.FT_WritePipeEx(Device, 0, WriteBuffer, 1, 0)
 else:
     Status, BytesWrote = PyD3XX.FT_WritePipeEx(Device, Pipes[0], WriteBuffer, 1, PyD3XX.NULL)
 if(Status == PyD3XX.FT_OK):

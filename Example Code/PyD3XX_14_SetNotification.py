@@ -38,7 +38,10 @@ def CallBackFunction(CallbackType: int, PipeID_GPIO0: int | bool, Length_GPIO1: 
     if(CallbackType == PyD3XX.E_FT_NOTIFICATION_CALLBACK_TYPE_DATA):
         print("CBF: You have " + str(Length_GPIO1) + " bytes to read at pipe " + hex(PipeID_GPIO0) + "!")
         if(NotificationCount != 5): # Disable callback function.
-            Status, ReadBuffer, BytesRead = PyD3XX.FT_ReadPipe(Device, ReadPipeCH1, Length_GPIO1, PyD3XX.NULL)
+            if(PyD3XX.Platform == "linux") or (PyD3XX.Platform == "darwin"):
+                Status, ReadBuffer, BytesRead = PyD3XX.FT_ReadPipe(Device, int("0x82", 16), Length_GPIO1, 0)
+            else:
+                Status, ReadBuffer, BytesRead = PyD3XX.FT_ReadPipe(Device, ReadPipeCH1, Length_GPIO1, PyD3XX.NULL)
         else:
             Status = PyD3XX.FT_ClearNotificationCallback(Device) # Clear callback function so we don't get called again.
             if Status != PyD3XX.FT_OK:

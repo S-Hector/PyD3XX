@@ -10,25 +10,10 @@ import subprocess
 from importlib.resources import files as _files
 from sys import platform as Platform
 
-if (Platform.startswith("linux")):
-    Platform = "linux"
-elif (Platform.startswith("win")):
-    Platform = "windows"
-elif (Platform.startswith("darwin")):
-    Platform = "darwin"
-elif (Platform.startswith("cygwin")):
-    Platform = "windows"
-
-if Platform == "linux":
-    import gc # Linux needs this imported or else we get seg faults from int.from_bytes() for some reason?
-
-_IsARM = _Platform.machine().startswith('arm') or _Platform.machine().startswith('aarch64')
-_DriverIsWinUSB = False
-
 # ---| Python Library Specific Definitions |---
 
 VERSION = "1.0.2"
-VERSION_TEST = "1.0.29_tractamus_medium_cimex"
+VERSION_TEST = "1.0.32_kakó_mílo"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -65,6 +50,24 @@ def _Print(Message: str, Level: int, Queue: bool):
         print("PyD3XX - MINOR ERROR: " + Message)
     elif(Level & PRINT_INFO_START & _PrintLevel):
         print("PyD3XX - Startup INFO: " + Message)
+
+if (Platform.startswith("linux")):
+    Platform = "linux"
+elif (Platform.startswith("win")):
+    Platform = "windows"
+elif (Platform.startswith("darwin")):
+    Platform = "darwin"
+elif (Platform.startswith("cygwin")):
+    Platform = "windows"
+else: # Default to linux if we didn't catch the platform.
+    _Print("OS UNKNOWN: Assuming OS is linux.", PRINT_INFO_START, True)
+    Platform = "linux"
+
+if Platform == "linux":
+    import gc # Linux needs this imported or else we get seg faults from int.from_bytes() for some reason?
+
+_IsARM = _Platform.machine().startswith('arm') or _Platform.machine().startswith('aarch64')
+_DriverIsWinUSB = False
 
 # ---| FTD3XX C/C++ HEADER EQUIVALENT STARTS HERE |---
 # THIS IS NOT A FULL EQUIVALENT TO THE FTD3XX HEADER.
@@ -186,6 +189,7 @@ FT_GPIO_0 = 0
 FT_GPIO_1 = 1
 E_FT_NOTIFICATION_CALLBACK_TYPE_DATA = 0
 E_FT_NOTIFICATION_CALLBACK_TYPE_GPIO = 1
+E_FT_NOTIFICATION_CALLBACK_TYPE_INTERRUPT = 2
 CONFIGURATION_OPTIONAL_FEATURE_DISABLEALL = 0
 CONFIGURATION_OPTIONAL_FEATURE_ENABLEBATTERYCHARGING = int("0x001", 16)
 CONFIGURATION_OPTIONAL_FEATURE_DISABLECANCELSESSIONUNDERRUN = int("0x002",16)
@@ -285,9 +289,12 @@ def _CreateDevice():
     NewDevice._Type = ctypes.c_ulong(0)
     NewDevice._ID = ctypes.c_ulong(0)
     NewDevice._LocID = ctypes.wintypes.DWORD(0)
-    NewDevice._SerialNumber = ctypes.create_string_buffer(16)
+    # The buffers should be 16, and 32.
+    # However, Linux dynamic library has a +1 error so it will segfault cause it accesses memory it shouldn't.
+    # I begrudgingly have to make these a byte bigger then they need to be due to Linux dynamic library bug.
+    NewDevice._SerialNumber = ctypes.create_string_buffer(17)
+    NewDevice._Description = ctypes.create_string_buffer(33)
     NewDevice.SerialNumber = ""
-    NewDevice._Description = ctypes.create_string_buffer(32)
     NewDevice.Description = ""
     return NewDevice
 
@@ -483,9 +490,9 @@ if _Python64:
     _Print("DETECTED 64-BIT PYTHON ENVIRONMENT: LOADING 64-bit dynamic library file & setting 64-bit argtypes.", PRINT_INFO_START, True)
     if Platform == "linux":
         if _IsARM:
-            DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM.so"))
+            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM.so"))
         else:
-            DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx.so"))
+            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx.so"))
     elif Platform == "darwin": # MacOS
         if _IsARM:
             _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM.dylib"))
@@ -969,6 +976,12 @@ def FT_ControlTransfer(Device: FT_Device, SetupPacket: FT_SetupPacket, Buffer: F
 def FT_GetVIDPID(Device: FT_Device) -> int | int | int:
     VID = ctypes.c_ushort(0)
     PID = ctypes.c_ushort(0)
+    if(Platform != "windows"): # Linux FT_GetVIDPID is broken. Use alternative.
+        Status, DeviceDescriptor = FT_GetDeviceDescriptor(Device)
+        if(Status != FT_OK):
+            _Print(FT_STATUS_STR[Status] + " | FT_GetVIDPID(), ERROR: Failed to get VID & PID.", PRINT_ERROR_MAJOR, False)
+            return Status, 0, 0
+        return Status, DeviceDescriptor.idVendor, DeviceDescriptor.idProduct
     Status = _DLL.FT_GetVIDPID(Device._Handle, ctypes.byref(VID), ctypes.byref(PID))
     if(Status != FT_OK):
         _Print(FT_STATUS_STR[Status] + " | FT_GetVIDPID(), ERROR: Failed to get VID & PID.", PRINT_ERROR_MAJOR, False)
@@ -1007,19 +1020,27 @@ def _FT_SetNotificationCallbackHelper(Context, CallbackType, CallbackInfoPointer
     bGPIO0 = False
     bGPIO1 = False
     if(CallbackType == E_FT_NOTIFICATION_CALLBACK_TYPE_DATA):
-        Length = ctypes.c_ulong.from_address(CallbackInfoPointer)
-        PipeID = ctypes.c_char.from_address(CallbackInfoPointer + SIZE_ULONG)
-        _FT_SetNotificationCallback_PythonFunction(E_FT_NOTIFICATION_CALLBACK_TYPE_DATA, int.from_bytes(PipeID.value, "little"), Length.value)
+        if(Platform != "windows"): # Linux uses uint despite ulong type declaration.
+            Length = ctypes.c_uint.from_address(CallbackInfoPointer)
+            PipeID = ctypes.c_char.from_address(CallbackInfoPointer + SIZE_UINT)
+        else:
+            Length = ctypes.c_ulong.from_address(CallbackInfoPointer)
+            PipeID = ctypes.c_char.from_address(CallbackInfoPointer + SIZE_ULONG)
+        try: #Ignore exception due to callback clearing.
+            _FT_SetNotificationCallback_PythonFunction(E_FT_NOTIFICATION_CALLBACK_TYPE_DATA, int.from_bytes(PipeID.value, "little"), Length.value)
+        except:
+            None
     elif(CallbackType == E_FT_NOTIFICATION_CALLBACK_TYPE_GPIO):
         bGPIO0 = (ctypes.c_uint.from_address(CallbackInfoPointer)).value != 0 # Get bool.
         bGPIO1 = (ctypes.c_uint.from_address(CallbackInfoPointer + SIZE_UINT)).value != 0 # Get bool.
-        _FT_SetNotificationCallback_PythonFunction(E_FT_NOTIFICATION_CALLBACK_TYPE_GPIO, bGPIO0, bGPIO1)
+        try: #Ignore exception due to callback clearing.
+            _FT_SetNotificationCallback_PythonFunction(E_FT_NOTIFICATION_CALLBACK_TYPE_GPIO, bGPIO0, bGPIO1)
+        except:
+            None
     else:
         _Print("INTERNAL LIBRARY ERROR: CALLBACK FUNCTION GOT INVALID CALLBACK TYPE.", PRINT_ERROR_MAJOR, False)
     return None
 
-# Note: The following function has an 'X' for Linux. The pipe id and length it returns are janked in Linux.
-# ^ Works fine in Windows. I assume the 'X' instead of an 'I' means this exists in the Linux library but is not confirmed to work.
 def FT_SetNotificationCallback(Device: FT_Device, CallbackFunction: typing.Callable[[int, int, int], None]) -> int:
     global _FT_SetNotificationCallback_PythonFunction
     if not hasattr(FT_SetNotificationCallback, "_CFUNC"):
@@ -1033,9 +1054,6 @@ def FT_SetNotificationCallback(Device: FT_Device, CallbackFunction: typing.Calla
 
 # Note: Same as FT_SetNotificationCallback with an 'X' but this just straight up seg faults. So we return immediately instead of calling it.
 def FT_ClearNotificationCallback(Device: FT_Device) -> int:
-    if Platform != "windows":
-        _Print("FT_ClearNotificationCallback() HAS 'X' FOR LINUX", PRINT_ERROR_CRITICAL, False)
-        return FT_OTHER_ERROR
     Status = _DLL.FT_ClearNotificationCallback(Device._Handle)
     if(Status != FT_OK):
         _Print(FT_STATUS_STR[Status] + " | FT_ClearNotificationCallback(), ERROR: Failed to clear callback function.", PRINT_ERROR_MAJOR, False)
@@ -1161,10 +1179,15 @@ def GetDriverVersion(Device: FT_Device) -> int | str:
     Status, DV = FT_GetDriverVersion(Device)
     DriverVersion = FT_STATUS_STR[Status]
     if(Status == FT_OK):
-        DriverVersion = format((DV & int("0xFF000000", 16)) >> 24, 'x') + '.' \
-        + format((DV & int("0x00FF0000", 16)) >> 16, 'x') + '.' \
-        + format((DV & int("0x0000FF00", 16)) >> 8, 'x') + '.' \
-        + format(DV & int("0x000000FF", 16), 'x')
+        if(Platform == "windows"):
+            DriverVersion = format((DV & int("0xFF000000", 16)) >> 24, 'x') + '.' \
+            + format((DV & int("0x00FF0000", 16)) >> 16, 'x') + '.' \
+            + format((DV & int("0x0000FF00", 16)) >> 8, 'x') + '.' \
+            + format(DV & int("0x000000FF", 16), 'x')
+        else:
+            DriverVersion = str((DV & int("0xFF000000", 16)) >> 24) + '.' \
+            + str((DV & int("0x00FF0000", 16)) >> 16) + '.' \
+            + str(DV & int("0x0000FFFF", 16))
     return Status, DriverVersion
 
 def FT_GetLibraryVersion() -> int | int:
@@ -1178,10 +1201,15 @@ def GetLibraryVersion() -> int | str:
     Status, LV = FT_GetLibraryVersion()
     LibraryVersion = FT_STATUS_STR[Status]
     if(Status == FT_OK):
-        LibraryVersion = format((LV & int("0xFF000000", 16)) >> 24, 'x') + '.' \
-        + format((LV & int("0x00FF0000", 16)) >> 16, 'x') + '.' \
-        + format((LV & int("0x0000FF00", 16)) >> 8, 'x') + '.' \
-        + format(LV & int("0x000000FF", 16), 'x')
+        if(Platform == "windows"):
+            LibraryVersion = format((LV & int("0xFF000000", 16)) >> 24, 'x') + '.' \
+            + format((LV & int("0x00FF0000", 16)) >> 16, 'x') + '.' \
+            + format((LV & int("0x0000FF00", 16)) >> 8, 'x') + '.' \
+            + format(LV & int("0x000000FF", 16), 'x')
+        else:
+            LibraryVersion = str((LV & int("0xFF000000", 16)) >> 24) + '.' \
+            + str((LV & int("0x00FF0000", 16)) >> 16) + '.' \
+            + str(LV & int("0x0000FFFF", 16))
     return Status, LibraryVersion
 
 def FT_CycleDevicePort(Device: FT_Device) -> int:
@@ -1190,28 +1218,28 @@ def FT_CycleDevicePort(Device: FT_Device) -> int:
         _Print(FT_STATUS_STR[Status] + " | FT_CycleDevicePort(), ERROR: Failed to cycle device port.", PRINT_ERROR_MAJOR, False)
     return Status
 
-def FT_ReadPipe(Device: FT_Device, Pipe: FT_Pipe, BufferLength: int, Overlapped_TimeoutMs) -> int | FT_Buffer | int:
+def FT_ReadPipe(Device: FT_Device, Pipe_Endpoint, BufferLength: int, Overlapped_TimeoutMs) -> int | FT_Buffer | int:
     Status = FT_OTHER_ERROR
     Buffer = FT_Buffer()
     Buffer._RawAddress = ctypes.c_buffer(BufferLength)
     BytesTransferred = ctypes.c_ulong(0)
-    if(Platform == "linux"): # Overlapped is instead a timeout in ms.
+    if(Platform != "windows"): # Overlapped is instead a timeout in ms.
         Status = _DLL.FT_ReadPipe(Device._Handle,
-                                    Pipe._PipeID,
+                                    Pipe_Endpoint,
                                     ctypes.byref(Buffer._RawAddress),
                                     BufferLength,
                                     ctypes.byref(BytesTransferred),
                                     Overlapped_TimeoutMs)
     elif(isinstance(Overlapped_TimeoutMs, FT_Overlapped)):
         Status = _DLL.FT_ReadPipe(Device._Handle,
-                                    Pipe._PipeID,
+                                    Pipe_Endpoint._PipeID,
                                     ctypes.byref(Buffer._RawAddress),
                                     BufferLength,
                                     ctypes.byref(BytesTransferred),
                                     Overlapped_TimeoutMs._RawAddress)
     elif((Overlapped_TimeoutMs == NULL) or (Overlapped_TimeoutMs == 0)):
         Status = _DLL.FT_ReadPipe(Device._Handle,
-                                    Pipe._PipeID,
+                                    Pipe_Endpoint._PipeID,
                                     ctypes.byref(Buffer._RawAddress),
                                     BufferLength,
                                     ctypes.byref(BytesTransferred),
@@ -1225,7 +1253,7 @@ def FT_ReadPipeEx(Device: FT_Device, Pipe_FIFOindex, BufferLength: int, Overlapp
     Buffer = FT_Buffer()
     Buffer._RawAddress = ctypes.c_buffer(BufferLength)
     BytesTransferred = ctypes.c_ulong(0)
-    if(Platform == "linux"): # Overlapped is instead a timeout in ms.
+    if(Platform != "windows"): # Overlapped is instead a timeout in ms.
         Status = _DLL.FT_ReadPipeEx(Device._Handle,
                                     Pipe_FIFOindex,
                                     ctypes.byref(Buffer._RawAddress),
@@ -1255,8 +1283,8 @@ def FT_ReadPipeAsync(Device: FT_Device, FIFO_Index: int, BufferLength: int, Over
     Buffer = FT_Buffer()
     Buffer._RawAddress = ctypes.c_buffer(BufferLength)
     BytesTransferred = ctypes.c_ulong(0)
-    if(Platform != "linux") and (Platform != "darwin"):
-        _Print("FT_ReadPipeAsync() DOES NOT EXIST OUTSIDE LINUX", PRINT_ERROR_CRITICAL, False)
+    if(Platform == "windows"):
+        _Print("FT_ReadPipeAsync() DOES NOT EXIST IN WINDOWS", PRINT_ERROR_CRITICAL, False)
         return FT_OTHER_ERROR, FT_Buffer(), 0
     if((Overlapped == NULL) or (Overlapped == 0)):
         Status = _DLL.FT_ReadPipeAsync(Device._Handle,
@@ -1274,29 +1302,29 @@ def FT_ReadPipeAsync(Device: FT_Device, FIFO_Index: int, BufferLength: int, Over
                                     Overlapped._RawAddress)
     return Status, Buffer, BytesTransferred.value
 
-def FT_WritePipe(Device: FT_Device, Pipe: FT_Pipe, Buffer: FT_Buffer, BufferLength: int, Overlapped_TimeoutMs) -> int | int:
+def FT_WritePipe(Device: FT_Device, Pipe_Endpoint, Buffer: FT_Buffer, BufferLength: int, Overlapped_TimeoutMs) -> int | int:
     Status = FT_OTHER_ERROR
     if(isinstance(Buffer._RawAddress, FT_Buffer)):
         _Print("FT_WritePipe(), was not given expected FT_Buffer.", PRINT_ERROR_MAJOR, False)
         return Status, 0
     BytesTransferred = ctypes.c_ulong(0)
-    if(Platform == "linux"): # Overlapped is instead a timeout in ms.
+    if(Platform != "windows"): # Overlapped is instead a timeout in ms.
         Status = _DLL.FT_WritePipe(Device._Handle,
-                                    Pipe._PipeID,
+                                    Pipe_Endpoint,
                                     ctypes.byref(Buffer._RawAddress),
                                     BufferLength,
                                     ctypes.byref(BytesTransferred),
                                     Overlapped_TimeoutMs)
     elif(isinstance(Overlapped_TimeoutMs, FT_Overlapped)):
         Status = _DLL.FT_WritePipe(Device._Handle,
-                                    Pipe._PipeID,
+                                    Pipe_Endpoint._PipeID,
                                     ctypes.byref(Buffer._RawAddress),
                                     BufferLength,
                                     ctypes.byref(BytesTransferred),
                                     Overlapped_TimeoutMs._RawAddress)
     elif((Overlapped_TimeoutMs == NULL) or (Overlapped_TimeoutMs == 0)):
         Status = _DLL.FT_WritePipe(Device._Handle,
-                                    Pipe._PipeID,
+                                    Pipe_Endpoint._PipeID,
                                     ctypes.byref(Buffer._RawAddress),
                                     BufferLength,
                                     ctypes.byref(BytesTransferred),
@@ -1311,7 +1339,7 @@ def FT_WritePipeEx(Device: FT_Device, Pipe_FIFOindex, Buffer: FT_Buffer, BufferL
         _Print("FT_WritePipeEx(), was not given expected FT_Buffer.", PRINT_ERROR_MAJOR, False)
         return Status, 0
     BytesTransferred = ctypes.c_ulong(0)
-    if(Platform == "linux"): # Overlapped is instead a timeout in ms.
+    if(Platform != "windows"): # Overlapped is instead a timeout in ms.
         Status = _DLL.FT_WritePipeEx(Device._Handle,
                                     Pipe_FIFOindex,
                                     ctypes.byref(Buffer._RawAddress),
@@ -1342,8 +1370,8 @@ def FT_WritePipeAsync(Device: FT_Device, FIFO_Index, Buffer: FT_Buffer, BufferLe
         _Print("FT_WritePipeEx(), was not given expected FT_Buffer.", PRINT_ERROR_MAJOR, False)
         return Status, 0
     BytesTransferred = ctypes.c_ulong(0)
-    if(Platform != "linux") and (Platform != "darwin"):
-        _Print("FT_WritePipeAsync() DOES NOT EXIST OUTSIDE LINUX", PRINT_ERROR_CRITICAL, False)
+    if(Platform == "windows"):
+        _Print("FT_WritePipeAsync() DOES NOT EXIST IN WINDOWS", PRINT_ERROR_CRITICAL, False)
         return FT_OTHER_ERROR, 0
     elif((Overlapped == NULL) or (Overlapped == 0)):
         Status = _DLL.FT_WritePipeAsync(Device._Handle,
