@@ -12,8 +12,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.0.2"
-VERSION_TEST = "1.0.32_kakó_mílo"
+VERSION = "1.0.3"
+VERSION_TEST = "1.0.34_prótos_gios"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -469,22 +469,42 @@ _Python64 = (ctypes.sizeof(ctypes.c_void_p) == 8) # True if 64-bit version of Py
 
 # Check if system has WinUSB D3XX driver installed.
 if Platform == "windows":
+    _DriverIsD3XX = False
+    _DriverIsWinUSB = False
+    # Check for FTDI D3XX driver.
     try:
-        _SearchWinUSB = subprocess.Popen("pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+        _SearchD3XX = subprocess.Popen("pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
     except:
-        _SearchWinUSB = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+        _SearchD3XX = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
     try:
-        _DriverIsWinUSB = _SearchWinUSB.decode("ascii")
-        if "ftd3xxwu.inf" in _DriverIsWinUSB:
-            _DriverIsWinUSB = True
+        _DriverIsD3XX = _SearchD3XX.decode("ascii")
+        if "ftdibus3.inf" in _DriverIsD3XX:
+            _DriverIsD3XX = True
         else:
-            _DriverIsWinUSB = False
+            _DriverIsD3XX = False
     except:
-        _DriverIsWinUSB = False
-    if _DriverIsWinUSB:
-        _Print("DETECTED WinUSB: Will use WinUSB dynamic library.", PRINT_INFO_START, True)
+        _DriverIsD3XX = False
+    if _DriverIsD3XX:
+        _Print("DETECTED D3XX driver: Will use D3XX dynamic library.", PRINT_INFO_START, True)
     else:
-        _Print("DID NOT DETECT WinUSB: Will use D3XX dynamic library.", PRINT_INFO_START, True)
+        _Print("DID NOT DETECT D3XX driver: Will check for WinUSB driver.", PRINT_INFO_START, True)
+        # Check for WinUSB
+        try:
+            _SearchWinUSB = subprocess.Popen("pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+        except:
+            _SearchWinUSB = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+        try:
+            _DriverIsWinUSB = _SearchWinUSB.decode("ascii")
+            if "ftd3xxwu.inf" in _DriverIsWinUSB:
+                _DriverIsWinUSB = True
+            else:
+                _DriverIsWinUSB = False
+        except:
+            _DriverIsWinUSB = False
+        if _DriverIsWinUSB:
+            _Print("DETECTED WinUSB: Will use WinUSB dynamic library.", PRINT_INFO_START, True)
+        else:
+            _Print("DID NOT DETECT ANY DRIVER. Will try using D3XX dynamic library anyways.", PRINT_ERROR_CRITICAL, True)
 
 if _Python64:
     _Print("DETECTED 64-BIT PYTHON ENVIRONMENT: LOADING 64-bit dynamic library file & setting 64-bit argtypes.", PRINT_INFO_START, True)
@@ -516,12 +536,10 @@ else:
     elif Platform == "darwin": # MacOS
         _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_32.dylib"))
     else: # We're defaulting to windows if not linux or MacOS.
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU_32.dll"))
-        elif _DriverIsWinUSB:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU_32.dll"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XX_32.dll"))
+        if (_IsARM or _DriverIsWinUSB):
+            print("PyD3XX ERROR: Current system is ARM 32-bit or 32-bit with WinUSB driver, EXITING.")
+            exit()
+        _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XX_32.dll"))
     try: _DLL = ctypes.cdll.LoadLibrary(_DLL_Path) # Check if 32-bit dll exists in same directory as executable.
     except:
         print("PyD3XX ERROR: Did not find 32-bit '" + _DLL_Path + "', EXITING.")
