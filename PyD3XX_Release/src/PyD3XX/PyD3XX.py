@@ -12,8 +12,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.0.4"
-VERSION_TEST = "1.0.36_achiváda_sto_paráthyro"
+VERSION = "1.0.5"
+VERSION_TEST = "1.0.37_allagí_megethón"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -51,6 +51,8 @@ def _Print(Message: str, Level: int, Queue: bool):
     elif(Level & PRINT_INFO_START & _PrintLevel):
         print("PyD3XX - Startup INFO: " + Message)
 
+# Determine OS and type sizes.
+
 if (Platform.startswith("linux")):
     Platform = "linux"
 elif (Platform.startswith("win")):
@@ -69,9 +71,9 @@ if Platform == "linux":
 _IsARM = _Platform.machine().startswith('arm') or _Platform.machine().startswith('aarch64')
 _DriverIsWinUSB = False
 
-# ---| FTD3XX C/C++ HEADER EQUIVALENT STARTS HERE |---
-# THIS IS NOT A FULL EQUIVALENT TO THE FTD3XX HEADER.
-# I HAVE TAKEN MY OWN LIBERTIES ON HOW TO REPRESENT STRUCTS.
+if ((Platform == "linux") or (Platform == "darwin")): #Fix type sizes for Linux and macOS
+    ctypes.c_ulong = ctypes.c_int32
+    ctypes.wintypes.DWORD = ctypes.c_int32
 
 SIZE_UINT = ctypes.sizeof(ctypes.c_uint)
 SIZE_ULONG = ctypes.sizeof(ctypes.c_ulong)
@@ -85,6 +87,10 @@ SIZE_CONFIGURATION_DESCRIPTOR = (SIZE_CHAR * 7) + SIZE_SHORT
 SIZE_INTERFACE_DESCRIPTOR = SIZE_CHAR * 9
 SIZE_STRING_DESCRIPTOR = (SIZE_CHAR * 2) + (SIZE_WCHAR * 256)
 SIZE_ENDPOINT_DESCRIPTOR = (SIZE_CHAR * 5) + SIZE_SHORT
+
+# ---| FTD3XX C/C++ HEADER EQUIVALENT STARTS HERE |---
+# THIS IS NOT A FULL EQUIVALENT TO THE FTD3XX HEADER.
+# I HAVE TAKEN MY OWN LIBERTIES ON HOW TO REPRESENT STRUCTS.
 
 NULL = ctypes.c_void_p(0)
 
