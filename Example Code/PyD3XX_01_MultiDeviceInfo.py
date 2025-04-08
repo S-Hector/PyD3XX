@@ -11,7 +11,6 @@ CREATE_DICT = 2 # Create a device dictionary in one function call.
 
 MakeList = CREATE_DICT # Controls how we make a list in this example.
 
-
 Status, DeviceCount = PyD3XX.FT_CreateDeviceInfoList() # Create a device info list.
 if Status != PyD3XX.FT_OK:
     print(PyD3XX.FT_STATUS_STR[Status] + " | FAILED TO CREATE DEVICE INFO LIST: ABORTING")
