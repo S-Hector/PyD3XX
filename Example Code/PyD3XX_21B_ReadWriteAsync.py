@@ -33,6 +33,7 @@ for i in range(2): # Get in and out pipes for channel 1 and create overlaps.
     if(Status != PyD3XX.FT_OK):
         print("WARNING: FAILED TO SET PIPE TIMEOUT TO 100")
         print("Status = " + PyD3XX.FT_STATUS_STR[Status])
+
 if(PyD3XX.Platform == "linux") or (PyD3XX.Platform == "darwin"):
     Status, ReadBuffer, BytesRead = PyD3XX.FT_ReadPipeAsync(Device, 0, 1, Overlaps[1])
 else:
