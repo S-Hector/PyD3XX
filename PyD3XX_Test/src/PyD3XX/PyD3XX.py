@@ -12,8 +12,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.0.5"
-VERSION_TEST = "1.0.37_allagí_megethón"
+VERSION = "1.0.6"
+VERSION_TEST = "1.0.39_angeliofóros_solínon"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -686,14 +686,14 @@ def FT_GetPipeInformation(Device: FT_Device, InterfaceIndex: int, PipeIndex: int
     if FT_STATUS_STR[Status] != "FT_OK":
         _Print(FT_STATUS_STR[Status] + " | Failed to get pipe information!", PRINT_ERROR_MAJOR, False)
         NewPipe._RawAddress = "FT_OTHER_ERROR"
-        return Status, NewPipe #Return bad pipe with ft other error code.
+        return Status, NewPipe # Return bad pipe with ft other error code.
     NewPipe._PipeType = ctypes.c_uint.from_address(ctypes.addressof(NewPipe._RawAddress) + 0)
     NewPipe.PipeType = NewPipe._PipeType.value
     NewPipe._PipeID = ctypes.c_char.from_address(ctypes.addressof(NewPipe._RawAddress) + SIZE_UINT)
-    NewPipe.PipeID = int.from_bytes(NewPipe._PipeID.value, "little")
-    NewPipe._MaximumPacketSize = ctypes.c_char.from_address(ctypes.addressof(NewPipe._RawAddress) + SIZE_UINT + SIZE_CHAR)
-    NewPipe.MaximumPacketSize = int.from_bytes(NewPipe._MaximumPacketSize.value, "little")
-    NewPipe._Interval = ctypes.c_char.from_address(ctypes.addressof(NewPipe._RawAddress) + SIZE_UINT + SIZE_CHAR + SIZE_SHORT)
+    NewPipe.PipeID = int.from_bytes(NewPipe._PipeID.value, "little") # Due to byte alignment this takes up a SHORT amount of space.
+    NewPipe._MaximumPacketSize = ctypes.c_ushort.from_address(ctypes.addressof(NewPipe._RawAddress) + SIZE_UINT + SIZE_SHORT)
+    NewPipe.MaximumPacketSize = NewPipe._MaximumPacketSize.value
+    NewPipe._Interval = ctypes.c_char.from_address(ctypes.addressof(NewPipe._RawAddress) + SIZE_UINT + SIZE_SHORT + SIZE_SHORT)
     NewPipe.Interval = int.from_bytes(NewPipe._Interval.value, "little")
     return Status, NewPipe
 
@@ -1442,6 +1442,21 @@ def FT_ReleaseOverlapped(Device: FT_Device, Overlapped: FT_Overlapped) -> int:
 
 def FT_SetStreamPipe(Device: FT_Device, AllWritePipes: bool, AllReadPipes: bool, Pipe, StreamSize: int) -> int:
     Status = FT_OTHER_ERROR
+    MaxPacketSize = 0
+    MPS_String = "Unknown"
+    # Determine MaxPacketSize
+    if (Device.Flags == FT_FLAGS_OPENED):
+            _Print("FT_SetStreamPipe(), Device was opened by another process!", PRINT_ERROR_MAJOR, False)
+    elif (Device.Flags == FT_FLAGS_HISPEED):
+            MaxPacketSize = 512
+            MPS_String = "Hi-Speed"
+    elif (FT_FLAGS_SUPERSPEED):
+            MaxPacketSize = 1024
+            MPS_String = "SuperSpeed"
+    else:
+        _Print("FT_SetStreamPipe(), Device has unknown flag value!", PRINT_ERROR_MAJOR, False)
+    if((StreamSize % MaxPacketSize) and (MaxPacketSize)):
+        _Print("FT_SetStreamPipe(), StreamSize " + str(StreamSize) + " is not a multiple of " + str(MaxPacketSize) + " for " + MPS_String + " mode!", PRINT_ERROR_MAJOR, False)
     if(isinstance(Pipe, FT_Pipe)):
         if(AllWritePipes or AllReadPipes):
             _Print("FT_SetStreamPipe(), PipeID will be ignored because AllXPipes arguments are not both False.", PRINT_ERROR_MINOR, False)
