@@ -7,11 +7,11 @@ includes = ["src/PyD3XX/"]
 
 [project]
 name = "PyD3XX"
-version = "1.0.6"
+version = "1.0.7"
 authors = [
   { name="Hector Soto", email="hector.soto@ftdichip.com" },
 ]
-description = "An unofficial Python wrapper for the FTDI D3XX library."
+description = "A Python wrapper for the FTDI D3XX library."
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [

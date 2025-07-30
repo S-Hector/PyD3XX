@@ -1,5 +1,5 @@
 # Created by Hector Soto
-# Unofficial conversion of the FTD3XX library.
+# A Python conversion of the FTD3XX library.
 
 import ctypes
 import ctypes.wintypes
@@ -12,8 +12,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.0.6"
-VERSION_TEST = "1.0.39_angeliofóros_solínon"
+VERSION = "1.0.7"
+VERSION_TEST = "1.0.40_chaméno_mégethos"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -680,7 +680,7 @@ def FT_ListDevices(IndexCount: int, Flags: int) -> int | (int | str | list[str])
 
 def FT_GetPipeInformation(Device: FT_Device, InterfaceIndex: int, PipeIndex: int) -> int | FT_Pipe:
     NewPipe = FT_Pipe()
-    RawSize = SIZE_UINT + SIZE_CHAR + SIZE_SHORT + SIZE_CHAR
+    RawSize = SIZE_UINT + SIZE_SHORT + SIZE_SHORT + SIZE_UINT # Overall struct is 4-byte aligned and PipeId is 2-byte aligned.
     NewPipe._RawAddress = ctypes.c_buffer(RawSize)
     Status = _DLL.FT_GetPipeInformation(Device._Handle, InterfaceIndex, PipeIndex, NewPipe._RawAddress)
     if FT_STATUS_STR[Status] != "FT_OK":
