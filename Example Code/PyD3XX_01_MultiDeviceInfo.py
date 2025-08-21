@@ -51,4 +51,3 @@ for i in range(0, DeviceCount): # Get device info at each index from 0->(DeviceC
     print("\tLocID = " + hex(Devices[i].LocID))
     print("\tSerial Number = " + Devices[i].SerialNumber)
     print("\tDescription = " + Devices[i].Description)
-

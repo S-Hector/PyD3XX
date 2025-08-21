@@ -6,14 +6,15 @@ import ctypes.wintypes
 import typing
 import platform as _Platform
 import subprocess
+import locale
 
 from importlib.resources import files as _files
 from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.0.7"
-VERSION_TEST = "1.0.40_chaméno_mégethos"
+VERSION = "1.0.8"
+VERSION_TEST = "1.0.42_néa_epochí"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -483,7 +484,7 @@ if Platform == "windows":
     except:
         _SearchWinUSB = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
     try:
-        _DriverIsWinUSB = _SearchWinUSB.decode("ascii")
+        _DriverIsWinUSB = _SearchWinUSB.decode(locale.getpreferredencoding(False))
         if "ftd3xxwu.inf" in _DriverIsWinUSB:
             _DriverIsWinUSB = True
         else:
@@ -500,7 +501,7 @@ if Platform == "windows":
         except:
             _SearchD3XX = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
         try:
-            _DriverIsD3XX = _SearchD3XX.decode("ascii")
+            _DriverIsD3XX = _SearchD3XX.decode(locale.getpreferredencoding(False))
             if "ftdibus3.inf" in _DriverIsD3XX:
                 _DriverIsD3XX = True
             else:
