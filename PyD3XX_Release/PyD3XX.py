@@ -13,8 +13,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.0.8"
-VERSION_TEST = "1.0.42_néa_epochí"
+VERSION = "1.0.9"
+VERSION_TEST = "1.0.44_kakí_chordí"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -297,9 +297,8 @@ def _CreateDevice():
     NewDevice._ID = ctypes.c_ulong(0)
     NewDevice._LocID = ctypes.wintypes.DWORD(0)
     # The buffers should be 16, and 32.
-    # However, Linux dynamic library has a +1 error so it will segfault cause it accesses memory it shouldn't.
-    # I begrudgingly have to make these a byte bigger then they need to be due to Linux dynamic library bug.
-    NewDevice._SerialNumber = ctypes.create_string_buffer(17)
+    # However, Linux dynamic libraries require different sizes.
+    NewDevice._SerialNumber = ctypes.create_string_buffer(25)
     NewDevice._Description = ctypes.create_string_buffer(33)
     NewDevice.SerialNumber = ""
     NewDevice.Description = ""
@@ -399,7 +398,6 @@ class FT_EndpointDescriptor: # THIS IS PYTHON API SPECIFIC.
     _bmAttributes = 0
     _wMaxPacketSize = 0
     _bInterval = 0
-
 
 class FT_Pipe:
     PipeType = 0
