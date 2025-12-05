@@ -22,6 +22,7 @@ if Status != PyD3XX.FT_OK:
     print("FAILED TO GET CHIP CONFIGURATION OF Device 0: ABORTING.")
     exit()
 print("Device 0 Description: '" + ChipConfiguration.StringDescriptors[1] + "'")
+ChipConfiguration.OptionalFeatureSupport = PyD3XX.CONFIGURATION_OPTIONAL_FEATURE_DISABLECANCELSESSIONUNDERRUN
 if(ChipConfiguration.StringDescriptors[1] == "TEST 0"):
     ChipConfiguration.StringDescriptors[1] = "TEST 1"
 else:

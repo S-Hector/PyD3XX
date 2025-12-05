@@ -1,4 +1,5 @@
 import PyD3XX
+import time
 
 PyD3XX.SetPrintLevel(PyD3XX.PRINT_NONE) # Make PyD3XX not print anything.
 
@@ -36,4 +37,8 @@ if (Status != PyD3XX.FT_OK) or (SuspendTimeout != 0):
     exit()
 print("Successfully disabled suspend mode!");
 
+time.sleep(50)
+
 PyD3XX.FT_Close(Device)
+
+print("Reached end!")

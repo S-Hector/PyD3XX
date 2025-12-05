@@ -13,8 +13,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.0.9"
-VERSION_TEST = "1.0.44_kakí_chordí"
+VERSION = "1.1.0"
+VERSION_TEST = "1.0.67_moní_ourá"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -67,10 +67,9 @@ else: # Default to linux if we didn't catch the platform.
     Platform = "linux"
 
 if Platform == "linux":
-    import gc # Linux needs this imported or else we get seg faults from int.from_bytes() for some reason?
+    import gc
 
 _IsARM = _Platform.machine().startswith('arm') or _Platform.machine().startswith('aarch64')
-_DriverIsWinUSB = False
 
 if ((Platform == "linux") or (Platform == "darwin")): #Fix type sizes for Linux and macOS
     ctypes.c_ulong = ctypes.c_int32
@@ -471,22 +470,22 @@ class FT_60XCONFIGURATION:
 
 # ---| LIBRARY INCLUSION PART |---
 _Python64 = (ctypes.sizeof(ctypes.c_void_p) == 8) # True if 64-bit version of Python is running.
-
-# Check if system has WinUSB D3XX driver installed.
-if Platform == "windows":
-    _DriverIsD3XX = False
-    _DriverIsWinUSB = False
-    # Check for WinUSB
-    try:
+_DriverIsD3XX = False
+_DriverIsWinUSB = False
+if Platform == "windows": # Check if system has WinUSB D3XX driver installed.
+    try: # Check for WinUSB
         _SearchWinUSB = subprocess.Popen("pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
     except:
         _SearchWinUSB = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+    if b"ftd3xxwu.inf" in _SearchWinUSB: # Check raw bytes before trying to decode.
+        _DriverIsWinUSB = True
     try:
-        _DriverIsWinUSB = _SearchWinUSB.decode(locale.getpreferredencoding(False))
-        if "ftd3xxwu.inf" in _DriverIsWinUSB:
-            _DriverIsWinUSB = True
-        else:
-            _DriverIsWinUSB = False
+        if not _DriverIsWinUSB: # If raw byte check failed, try again after decoding.
+            _DriverIsWinUSB = _SearchWinUSB.decode(locale.getpreferredencoding(False)) # Ignore local encoding.
+            if "ftd3xxwu.inf" in _DriverIsWinUSB:
+                _DriverIsWinUSB = True
+            else:
+                _DriverIsWinUSB = False
     except:
         _DriverIsWinUSB = False
     if _DriverIsWinUSB:
@@ -498,12 +497,15 @@ if Platform == "windows":
             _SearchD3XX = subprocess.Popen("pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
         except:
             _SearchD3XX = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+        if b"ftdibus3.inf" in _SearchD3XX: # Check raw bytes before trying to decode.
+            _DriverIsD3XX = True
         try:
-            _DriverIsD3XX = _SearchD3XX.decode(locale.getpreferredencoding(False))
-            if "ftdibus3.inf" in _DriverIsD3XX:
-                _DriverIsD3XX = True
-            else:
-                _DriverIsD3XX = False
+            if not _DriverIsD3XX: # If raw byte check failed, try again after decoding.
+                _DriverIsD3XX = _SearchD3XX.decode(locale.getpreferredencoding(False))
+                if "ftdibus3.inf" in _DriverIsD3XX:
+                    _DriverIsD3XX = True
+                else:
+                    _DriverIsD3XX = False
         except:
             _DriverIsD3XX = False
         if _DriverIsD3XX:
@@ -512,61 +514,22 @@ if Platform == "windows":
             _Print("DID NOT DETECT ANY DRIVER. Will try using D3XX dynamic library anyways.", PRINT_ERROR_CRITICAL, True)
             _DriverIsD3XX = True
 
-if _Python64:
-    _Print("DETECTED 64-BIT PYTHON ENVIRONMENT: LOADING 64-bit dynamic library file.", PRINT_INFO_START, True)
-    if Platform == "linux":
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM.so"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx.so"))
-    elif Platform == "darwin": # MacOS
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM.dylib"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx.dylib"))
-    else: # We're defaulting to windows if not linux or MacOS.
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU_ARM.dll"))
-        elif _DriverIsWinUSB:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU.dll"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XX.dll"))
-    try:
-        if(Platform == "windows"):
-            _DLL = ctypes.windll.LoadLibrary(_DLL_Path) # Check if 64-bit dll exists in same directory as executable.
-        else:
-            _DLL = ctypes.cdll.LoadLibrary(_DLL_Path) # Check if 64-bit dll exists in same directory as executable.
-    except:
-        print("PyD3XX ERROR: Did not find 64-bit '" + _DLL_Path + "', EXITING.")
-        exit()
-else:
-    _Print("DETECTED 32-BIT PYTHON ENVIRONMENT: LOADING 32-bit dynamic library file.", PRINT_INFO_START, True)
-    if Platform == "linux":
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM_32.so"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_32.so"))
-    elif Platform == "darwin": # MacOS
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM.dylib"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_32.dylib"))
-    else: # We're defaulting to windows if not linux or MacOS.
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU_32.dll"))
-        elif _DriverIsWinUSB:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU_32.dll"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XX_32.dll"))
-    try:
-        if(Platform == "windows"): #32-bit WinUSB library requires windll instead of cdll. Doing this to avoid future issues with Windows.
-            _DLL = ctypes.windll.LoadLibrary(_DLL_Path) # Check if 32-bit dll exists in same directory as executable.
-        else:
-            _DLL = ctypes.cdll.LoadLibrary(_DLL_Path) # Check if 32-bit dll exists in same directory as executable.
-    except:
-        print("PyD3XX ERROR: Did not find 32-bit '" + _DLL_Path + "', EXITING.")
-        exit()
-_Print("Successfully loaded FTDI D3XX dynamic library.", PRINT_INFO_START, True)
+# ---| Try to Load Dynamic Library |---
+_LibraryFile = ""
+_LibraryFile += "FTD3XX" if (Platform=="windows") else "libftd3xx"
+_LibraryFile += "WU" if (_DriverIsWinUSB) else ""
+_LibraryFile += ("_ARM" if (_IsARM) else ("_32" if not(_Python64) else ""))
+_LibraryFile += ".dll" if (Platform=="windows") else (".dylib" if (Platform=="darwin") else ".so")
+_DLL_Path = str(_files("PyD3XX").joinpath(_LibraryFile))
+try:
+    if(Platform == "windows"):
+        _DLL = ctypes.windll.LoadLibrary(_DLL_Path) # Check if dll exists in same directory as executable.
+    else:
+        _DLL = ctypes.cdll.LoadLibrary(_DLL_Path) # Check if dll exists in same directory as executable.
+except:
+    print("PyD3XX ERROR: Did not find '" + _DLL_Path + "', EXITING.")
+    exit()
+_Print("Successfully loaded D3XX: '" + _LibraryFile + "'", PRINT_INFO_START, True)
 
 # ---| Python-Specific Functions |---
 
@@ -574,7 +537,6 @@ _Print("Successfully loaded FTDI D3XX dynamic library.", PRINT_INFO_START, True)
 # Python doesn't natively do "pass by reference" like in C++.
 # So we return multiple values instead of using ctypes.
 # I want Python users to not have to know about or need to use ctypes.
-# Personally, I HATE that pass by reference is not a thing.
 
 def FT_CreateDeviceInfoList() -> int | int:
     DeviceCount = ctypes.c_ulong(0)
@@ -626,7 +588,6 @@ def FT_GetDeviceInfoList(DeviceCount: int) -> int | list[FT_Device]:
         Devices[i].Description = Devices[i]._Description.value.decode("ascii")
         Devices[i].Handle = Devices[i]._Handle.value
     return Status, Devices
-
 
 def FT_GetDeviceInfoDict(DeviceCount: int) -> int | dict[int, FT_Device]:
     ReturnStatus = FT_OK

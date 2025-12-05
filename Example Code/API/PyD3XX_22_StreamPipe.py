@@ -25,10 +25,11 @@ for i in range(2): # Get in and out pipes for channel 1.
         exit()
 Status = PyD3XX.FT_SetStreamPipe(Device, True, True, PyD3XX.NULL, 1024)
 if Status != PyD3XX.FT_OK:
-    print("FAILED TO SET STREAM SIZE FOR ALL PIPES.")
+    print("FAILED TO SET STREAM SIZE FOR ALL PIPES. " + PyD3XX.FT_STATUS_STR[Status])
     exit()
 else:
     print("Stream size for all pipes set to 1024 bytes!")
+
 Status = PyD3XX.FT_ClearStreamPipe(Device, False, False, Pipes[1])
 if Status != PyD3XX.FT_OK:
     print("FAILED TO CLEAR STREAM SIZE FOR CH1 READ PIPE.")

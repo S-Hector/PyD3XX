@@ -1,13 +1,13 @@
 import PyD3XX
 
-CHANNEL_COUNT = 1 # How many channels we're streaming.
+CHANNEL_COUNT = 4 # How many channels we're streaming.
 STREAM_SIZE = 100000 # How many bytes each read pipe call is.
 VALUE_SIZE = 2 # How many bytes each counter value is.
 # Total counter values = STREAM_SIZE / VALUE_SIZE
 FIXED_TRANSFER_SIZE = False # Fix the transfer size. DO NOT enable unless STREAM_SIZE is a multiple of MaxPacketSize.
 LOOP_COUNT = 1 # Set to True to loop forever. Set to an integer X value to loop X times.
 CHECK_INCREMENT = True # Stop streaming if a counter value is not greater than the previous by 1.
-PRINT_COUNT = False # Set to true if you want to print every single value.
+PRINT_COUNT = True # Set to true if you want to print every single value.
 
 def GetValue(Buffer: PyD3XX.FT_Buffer, Index: int) -> int:
     Value = 0
@@ -74,7 +74,7 @@ while LOOP_COUNT: # Read IN pipes.
             if(Status == PyD3XX.FT_OK): break
     if CHECK_INCREMENT:
         for i in range(1, (CHANNEL_COUNT * 2), 2): # Check values read.
-            if(PRINT_COUNT): # Print first vlaue.
+            if(PRINT_COUNT): # Print first value.
                     CurrentValue = GetValue(ReadBuffer[i], 0)
                     print("CH" + str(round((i+1)/2)) + "[" + str(0) + "]: " + str(CurrentValue))
             for j in range(VALUE_SIZE, STREAM_SIZE, VALUE_SIZE):
