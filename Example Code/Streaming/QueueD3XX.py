@@ -157,6 +157,7 @@ if False:
     MaxLatency = str(round(MaxLatency, 2))
     print("Max Latency = " + MaxLatency + " us\t| Average Latency = " + AverageLatency + " us")
 
+Status = PyD3XX.Queue.FreeQueueD3XX()
 Status = PyD3XX.Queue.Close(Device)
 if(Status == PyD3XX.FT_OK):
     print("Program ended and device closed successfully.")
