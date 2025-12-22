@@ -10,7 +10,7 @@ from importlib.resources import files as _files
 # Create library file string.
 _LF = PyD3XX._LibraryFile.replace("FTD3XX", "QueueD3XX")
 _LF = _LF.replace("libftd3xx", "QueueD3XX")
-_DLL_Path = str(_files("PyD3XX").joinpath("Queue\\" + _LF))
+_DLL_Path = str(_files("PyD3XX").joinpath("Queue/" + _LF))
 try:
     if(PyD3XX.Platform == "windows"):
         _DLL = ctypes.windll.LoadLibrary(_DLL_Path) # Check if dll exists in same directory as executable.
@@ -109,3 +109,6 @@ def GetWriteStatus(GQueue, Wait: bool) -> int:
                                     ctypes.byref(BytesTransferred),
                                     int(Wait))
     return Status
+
+def FreeQueueD3XX() -> int:
+    return _DLL.HS_FreeQueueD3XX()
