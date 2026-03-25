@@ -14,7 +14,7 @@ from sys import platform as Platform
 # ---| Python Library Specific Definitions |---
 
 VERSION = "1.1.0"
-VERSION_TEST = "1.0.70_filikoí_pinkouínoi"
+VERSION_TEST = "1.0.87_pou_péftoun_báza"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -83,10 +83,12 @@ SIZE_WCHAR = ctypes.sizeof(ctypes.c_wchar)
 SIZE_PTR = ctypes.sizeof(ctypes.c_void_p)
 SIZE_DWORD = ctypes.sizeof(ctypes.wintypes.DWORD)
 SIZE_DEVICE_DESCRIPTOR = (SIZE_CHAR * 10) + (SIZE_SHORT * 4)
-SIZE_CONFIGURATION_DESCRIPTOR = (SIZE_CHAR * 7) + SIZE_SHORT
+SIZE_CONFIGURATION_DESCRIPTOR = (SIZE_CHAR * 2) + (SIZE_SHORT * 2) + (SIZE_CHAR * 4)
 SIZE_INTERFACE_DESCRIPTOR = SIZE_CHAR * 9
 SIZE_STRING_DESCRIPTOR = (SIZE_CHAR * 2) + (SIZE_WCHAR * 256)
 SIZE_ENDPOINT_DESCRIPTOR = (SIZE_CHAR * 5) + SIZE_SHORT
+SIZE_FT_PIPE_TRANSFER_CONF = (SIZE_UINT * 2) + (SIZE_SHORT * 2) + (SIZE_UINT * 2)
+SIZE_FT_TRANSFER_CONF = SIZE_UINT + (SIZE_FT_PIPE_TRANSFER_CONF * 2) + (SIZE_UINT * 3)
 
 # ---| FTD3XX C/C++ HEADER EQUIVALENT STARTS HERE |---
 # THIS IS NOT A FULL EQUIVALENT TO THE FTD3XX HEADER.
@@ -220,6 +222,10 @@ FT_CONFIGURATION_DESCRIPTOR_TYPE = int("0x02", 16)
 FT_STRING_DESCRIPTOR_TYPE = int("0x03", 16)
 FT_INTERFACE_DESCRIPTOR_TYPE = int("0x04", 16)
 FT_ENDPOINT_DESCRIPTOR_TYPE = int("0x05", 16) # THIS IS PYTHON API SPECIFIC.
+
+FT_PIPE_DIR_IN = 0
+FT_PIPE_DIR_OUT = 1
+FT_PIPE_DIR_COUNT = 2
 
 class FT_Buffer:
     def __init__(self, Size: int = None):
@@ -466,6 +472,32 @@ class FT_60XCONFIGURATION:
     _MSIO_Control = 0
     _GPIO_Control = 0
 
+class FT_PipeTransferConf:
+    fPipeNotUsed = False
+    fNonThreadSafeTransfer = False
+    bURBCount = 8
+    wURBBufferCount = 256
+    dwURBBufferSize = 32768
+    dwStreamingSize = 1073741824
+    _fPipeNotUsed = 0
+    _fNonThreadSafeTransfer = 0
+    _bURBCount = 0
+    _wURBBufferCount = 0
+    _dwURBBufferSize = 0
+    _dwStreamingSize = 0
+
+class FT_TransferConf:
+    pipe = "FT_OTHER_ERROR"
+    wStructSize = SIZE_FT_TRANSFER_CONF
+    fStopReadingOnURBUnderrun = False
+    fBitBangMode = False
+    fKeepDeviceSideBufferAfterReopen = False
+    _pipe = [FT_PipeTransferConf(), FT_PipeTransferConf()]
+    _wStructSize = SIZE_FT_TRANSFER_CONF
+    _fStopReadingOnURBUnderrun = 0
+    _fBitBangMode = 0
+    _fKeepDeviceSideBufferAfterReopen = 0
+
 # ---| END OF EQUIVALENT HEADER PORTION |---
 
 # ---| LIBRARY INCLUSION PART |---
@@ -518,7 +550,8 @@ if Platform == "windows": # Check if system has WinUSB D3XX driver installed.
 _LibraryFile = ""
 _LibraryFile += "FTD3XX" if (Platform=="windows") else "libftd3xx"
 _LibraryFile += "WU" if (_DriverIsWinUSB) else ""
-_LibraryFile += ("_ARM" if (_IsARM) else ("_32" if not(_Python64) else ""))
+_LibraryFile += ("_ARM" if (_IsARM and (Platform!="darwin")) else "")
+_LibraryFile += ("_32" if not(_Python64) else "")
 _LibraryFile += ".dll" if (Platform=="windows") else (".dylib" if (Platform=="darwin") else ".so")
 _DLL_Path = str(_files("PyD3XX").joinpath(_LibraryFile))
 try:
@@ -977,12 +1010,6 @@ def FT_ControlTransfer(Device: FT_Device, SetupPacket: FT_SetupPacket, Buffer: F
 def FT_GetVIDPID(Device: FT_Device) -> int | int | int:
     VID = ctypes.c_ushort(0)
     PID = ctypes.c_ushort(0)
-    if(Platform != "windows"): # Linux FT_GetVIDPID is broken. Use alternative.
-        Status, DeviceDescriptor = FT_GetDeviceDescriptor(Device)
-        if(Status != FT_OK):
-            _Print(FT_STATUS_STR[Status] + " | FT_GetVIDPID(), ERROR: Failed to get VID & PID.", PRINT_ERROR_MAJOR, False)
-            return Status, 0, 0
-        return Status, DeviceDescriptor.idVendor, DeviceDescriptor.idProduct
     Status = _DLL.FT_GetVIDPID(Device._Handle, ctypes.byref(VID), ctypes.byref(PID))
     if(Status != FT_OK):
         _Print(FT_STATUS_STR[Status] + " | FT_GetVIDPID(), ERROR: Failed to get VID & PID.", PRINT_ERROR_MAJOR, False)
@@ -1443,4 +1470,106 @@ def FT_ResetDevicePort(Device: FT_Device) -> int:
     Status = _DLL.FT_ResetDevicePort(Device._Handle)
     if(Status != FT_OK):
         _Print(FT_STATUS_STR[Status] + " | FT_ResetDevicePort(), ERROR: Failed to reset device port.", PRINT_ERROR_MAJOR, False)
+    return Status
+
+def FT_GetTransferParams(dwFifoID: int) -> int | FT_TransferConf:
+    Status = FT_OTHER_ERROR
+    NewParams = FT_TransferConf()
+    NewParams.pipe = "FT_OTHER_ERROR"
+    RawSize = SIZE_FT_TRANSFER_CONF
+    _RawAddress = ctypes.c_buffer(RawSize)
+    # Have to set struct size.
+    _RawAddress[0] = ctypes.c_char(SIZE_FT_TRANSFER_CONF & int("0x000000FF", 16))
+    _RawAddress[1] = ctypes.c_char((SIZE_FT_TRANSFER_CONF & int("0x0000FF00", 16)) >> 8)
+    if Platform == "windows":
+        _Print("FT_GetTransferParams() DOES NOT EXIST IN WINDOWS", PRINT_ERROR_CRITICAL, False)
+        return Status, NewParams # Return early.
+    Status = _DLL.FT_GetTransferParams(_RawAddress, dwFifoID)
+    if FT_STATUS_STR[Status] != "FT_OK":
+        _Print(FT_STATUS_STR[Status] + " | Failed to get transfer params!", PRINT_ERROR_MAJOR, False)
+        return Status, NewParams # Return early.
+    NewParams.pipe = [FT_PipeTransferConf(), FT_PipeTransferConf()]
+    NewParams._wStructSize = ctypes.c_ushort.from_address(ctypes.addressof(_RawAddress) + 0)
+    NewParams.wStructSize = NewParams._wStructSize.value
+    NewParams._pipe[FT_PIPE_DIR_IN]._fPipeNotUsed = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + SIZE_UINT)
+    NewParams.pipe[FT_PIPE_DIR_IN].fPipeNotUsed  = NewParams._pipe[FT_PIPE_DIR_IN]._fPipeNotUsed.value != 0
+    NewParams._pipe[FT_PIPE_DIR_IN]._fNonThreadSafeTransfer = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 2))
+    NewParams.pipe[FT_PIPE_DIR_IN].fNonThreadSafeTransfer  = NewParams._pipe[FT_PIPE_DIR_IN]._fNonThreadSafeTransfer.value != 0
+    NewParams._pipe[FT_PIPE_DIR_IN]._bURBCount = ctypes.c_char.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 3))
+    NewParams.pipe[FT_PIPE_DIR_IN].bURBCount  = int.from_bytes(NewParams._pipe[FT_PIPE_DIR_IN]._bURBCount.value)
+    NewParams._pipe[FT_PIPE_DIR_IN]._wURBBufferCount = ctypes.c_ushort.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 3) + SIZE_SHORT)
+    NewParams.pipe[FT_PIPE_DIR_IN].wURBBufferCount  = NewParams._pipe[FT_PIPE_DIR_IN]._wURBBufferCount.value
+    NewParams._pipe[FT_PIPE_DIR_IN]._dwURBBufferSize = ctypes.wintypes.DWORD.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 3) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize  = NewParams._pipe[FT_PIPE_DIR_IN]._dwURBBufferSize.value
+    NewParams._pipe[FT_PIPE_DIR_IN]._dwStreamingSize = ctypes.wintypes.DWORD.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 4) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize  = NewParams._pipe[FT_PIPE_DIR_IN]._dwStreamingSize.value
+    
+    NewParams._pipe[FT_PIPE_DIR_OUT]._fPipeNotUsed = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 5) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_OUT].fPipeNotUsed  = NewParams._pipe[FT_PIPE_DIR_OUT]._fPipeNotUsed.value != 0
+    NewParams._pipe[FT_PIPE_DIR_OUT]._fNonThreadSafeTransfer = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 6) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_OUT].fNonThreadSafeTransfer  = NewParams._pipe[FT_PIPE_DIR_OUT]._fNonThreadSafeTransfer.value != 0
+    NewParams._pipe[FT_PIPE_DIR_OUT]._bURBCount = ctypes.c_char.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 7) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_OUT].bURBCount  = int.from_bytes(NewParams._pipe[FT_PIPE_DIR_OUT]._bURBCount.value)
+    NewParams._pipe[FT_PIPE_DIR_OUT]._wURBBufferCount = ctypes.c_ushort.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 7) + (SIZE_SHORT * 3))
+    NewParams.pipe[FT_PIPE_DIR_OUT].wURBBufferCount  = NewParams._pipe[FT_PIPE_DIR_OUT]._wURBBufferCount.value
+    NewParams._pipe[FT_PIPE_DIR_OUT]._dwURBBufferSize = ctypes.wintypes.DWORD.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 7) + (SIZE_SHORT * 4))
+    NewParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize  = NewParams._pipe[FT_PIPE_DIR_OUT]._dwURBBufferSize.value
+    NewParams._pipe[FT_PIPE_DIR_OUT]._dwStreamingSize = ctypes.wintypes.DWORD.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 8) + (SIZE_SHORT * 4))
+    NewParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize  = NewParams._pipe[FT_PIPE_DIR_OUT]._dwStreamingSize.value
+    NewParams._fStopReadingOnURBUnderrun = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 9) + (SIZE_SHORT * 4))
+    NewParams.fStopReadingOnURBUnderrun = NewParams._fStopReadingOnURBUnderrun.value != 0
+    NewParams._fBitBangMode = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 10) + (SIZE_SHORT * 4))
+    NewParams.fBitBangMode = NewParams._fBitBangMode.value != 0
+    NewParams._fKeepDeviceSideBufferAfterReopen = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 11) + (SIZE_SHORT * 4))
+    NewParams.fKeepDeviceSideBufferAfterReopen = NewParams._fKeepDeviceSideBufferAfterReopen.value != 0
+    return Status, NewParams
+
+def FT_SetTransferParams(TransferParams: FT_TransferConf, dwFifoID: int) -> int:
+    Status = FT_OTHER_ERROR
+    if Platform == "windows":
+            _Print("FT_GetTransferParams() DOES NOT EXIST IN WINDOWS", PRINT_ERROR_CRITICAL, False)
+            return Status # Return early.
+    RawSize = TransferParams.wStructSize
+    _RawAddress = ctypes.c_buffer(RawSize)
+    # Have to set struct size.
+    _RawAddress[0] = ctypes.c_char(TransferParams.wStructSize & int("0x000000FF", 16))
+    _RawAddress[1] = ctypes.c_char((TransferParams.wStructSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[SIZE_UINT] = ctypes.c_char(int(TransferParams.pipe[FT_PIPE_DIR_IN].fPipeNotUsed) & int("0x000000FF", 16))
+    _RawAddress[SIZE_UINT + 1] = ctypes.c_char((int(TransferParams.pipe[FT_PIPE_DIR_IN].fPipeNotUsed) & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[(SIZE_UINT * 2)] = ctypes.c_char(int(TransferParams.pipe[FT_PIPE_DIR_IN].fNonThreadSafeTransfer) & int("0x000000FF", 16))
+    _RawAddress[(SIZE_UINT * 2) + 1] = ctypes.c_char((int(TransferParams.pipe[FT_PIPE_DIR_IN].fNonThreadSafeTransfer) & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[(SIZE_UINT * 3)] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_IN].bURBCount & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 3) + SIZE_SHORT)] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_IN].wURBBufferCount & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 3) + SIZE_SHORT) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].wURBBufferCount & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 3) + (SIZE_SHORT * 2))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 3) + (SIZE_SHORT * 2)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 3) + (SIZE_SHORT * 2)) + 2] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize & int("0x0000FF0000", 16)) >> 16)
+    _RawAddress[((SIZE_UINT * 3) + (SIZE_SHORT * 2)) + 3] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize & int("0x00FF000000", 16)) >> 24)
+    _RawAddress[((SIZE_UINT * 4) + (SIZE_SHORT * 2))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 4) + (SIZE_SHORT * 2)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 4) + (SIZE_SHORT * 2)) + 2] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize & int("0x0000FF0000", 16)) >> 16)
+    _RawAddress[((SIZE_UINT * 4) + (SIZE_SHORT * 2)) + 3] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize & int("0x00FF000000", 16)) >> 24)
+
+    _RawAddress[(SIZE_UINT * 5) + (SIZE_SHORT * 2)] = ctypes.c_char(int(TransferParams.pipe[FT_PIPE_DIR_OUT].fPipeNotUsed) & int("0x000000FF", 16))
+    _RawAddress[(SIZE_UINT * 5) + (SIZE_SHORT * 2) + 1] = ctypes.c_char((int(TransferParams.pipe[FT_PIPE_DIR_OUT].fPipeNotUsed) & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[(SIZE_UINT * 6) + (SIZE_SHORT * 2)] = ctypes.c_char(int(TransferParams.pipe[FT_PIPE_DIR_OUT].fNonThreadSafeTransfer) & int("0x000000FF", 16))
+    _RawAddress[(SIZE_UINT * 6) + (SIZE_SHORT * 2) + 1] = ctypes.c_char((int(TransferParams.pipe[FT_PIPE_DIR_OUT].fNonThreadSafeTransfer) & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[(SIZE_UINT * 7) + (SIZE_SHORT * 2)] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_OUT].bURBCount & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 3))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_OUT].wURBBufferCount & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 3)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].wURBBufferCount & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 4))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 4)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 4)) + 2] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize & int("0x0000FF0000", 16)) >> 16)
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 4)) + 3] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize & int("0x00FF000000", 16)) >> 24)
+    _RawAddress[((SIZE_UINT * 8) + (SIZE_SHORT * 4))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 8) + (SIZE_SHORT * 4)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 8) + (SIZE_SHORT * 4)) + 2] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize & int("0x0000FF0000", 16)) >> 16)
+    _RawAddress[((SIZE_UINT * 8) + (SIZE_SHORT * 4)) + 3] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize & int("0x00FF000000", 16)) >> 24)
+    _RawAddress[((SIZE_UINT * 9) + (SIZE_SHORT * 4))] = ctypes.c_char(int(TransferParams.fStopReadingOnURBUnderrun) & int("0x000000FF", 16))
+    # Skip fReserved1.
+    _RawAddress[((SIZE_UINT * 11) + (SIZE_SHORT * 4))] = ctypes.c_char(int(TransferParams.fStopReadingOnURBUnderrun) & int("0x000000FF", 16))
+
+    Status = _DLL.FT_SetTransferParams(_RawAddress, dwFifoID)
+    if FT_STATUS_STR[Status] != "FT_OK":
+        _Print(FT_STATUS_STR[Status] + " | Failed to get transfer params!", PRINT_ERROR_MAJOR, False)
     return Status

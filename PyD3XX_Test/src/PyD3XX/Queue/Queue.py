@@ -28,7 +28,7 @@ class Queue:
         self._HS_Queue = ctypes.c_void_p(0)
         self._StreamSize = 0
 
-def GetVersionQueueD3XX() -> int:
+def GetVersionQueueD3XX() -> str:
     LV = _DLL.HS_GetVersionQueueD3XX()
     Version = format((LV & int("0xFF000000", 16)) >> 24, 'x') + '.' \
             + format((LV & int("0x00FF0000", 16)) >> 16, 'x') + '.' \
@@ -36,36 +36,36 @@ def GetVersionQueueD3XX() -> int:
             + format(LV & int("0x000000FF", 16), 'x')
     return Version
 
-def Open(Identifier, OpenFlag: int, Device: PyD3XX.FT_Device) -> int:
-    Status = PyD3XX.FT_OTHER_ERROR
-    if(not(isinstance(Device, PyD3XX.FT_Device))):
-        PyD3XX._Print("Open(), did not get an FT_Device!", PRINT_ERROR_MAJOR, False)
-    elif(not(isinstance(Device._Handle, ctypes.c_void_p))):
-        PyD3XX._Print("Open(), got an uninitialized or broken FT_Device object!", PyD3XX.PRINT_ERROR_MAJOR, False)
-    elif(OpenFlag & PyD3XX.FT_OPEN_BY_INDEX):
-        if(isinstance(Identifier, int)):
-            Status = _DLL.HS_Open(Identifier, PyD3XX.FT_OPEN_BY_INDEX, ctypes.byref(Device._Handle))
-            Device.Handle = Device._Handle.value
-        else:
-            PyD3XX._Print("Open(), did not get expected int for index!", PyD3XX.PRINT_ERROR_MAJOR, False)
-    elif(OpenFlag & PyD3XX.FT_OPEN_BY_SERIAL_NUMBER):
-        if(isinstance(Identifier, str)):
-            Status = _DLL.HS_Open(Identifier.encode("ascii"), PyD3XX.FT_OPEN_BY_SERIAL_NUMBER, ctypes.byref(Device._Handle))
-            Device.Handle = Device._Handle.value
-        else:
-            PyD3XX._Print("Open(), did not get expected str for serial number!", PyD3XX.PRINT_ERROR_MAJOR, False)
-    elif(OpenFlag & PyD3XX.FT_OPEN_BY_DESCRIPTION):
-        if(isinstance(Identifier, str)):
-            Status = _DLL.HS_Open(Identifier.encode("ascii"), PyD3XX.FT_OPEN_BY_DESCRIPTION, ctypes.byref(Device._Handle))
-            Device.Handle = Device._Handle.value
-        else:
-            PyD3XX._Print("Open(), did not get expected str for description!", PyD3XX.PRINT_ERROR_MAJOR, False)
-    else:
-        PyD3XX._Print("Open(), given invalid open flag!", PyD3XX.PRINT_ERROR_MAJOR, False)
-    return Status
+#def Open(Identifier, OpenFlag: int, Device: PyD3XX.FT_Device) -> int:
+#    Status = PyD3XX.FT_OTHER_ERROR
+#    if(not(isinstance(Device, PyD3XX.FT_Device))):
+#        PyD3XX._Print("Open(), did not get an FT_Device!", PRINT_ERROR_MAJOR, False)
+#    elif(not(isinstance(Device._Handle, ctypes.c_void_p))):
+#        PyD3XX._Print("Open(), got an uninitialized or broken FT_Device object!", PyD3XX.PRINT_ERROR_MAJOR, False)
+#    elif(OpenFlag & PyD3XX.FT_OPEN_BY_INDEX):
+#        if(isinstance(Identifier, int)):
+#            Status = _DLL.HS_Open(Identifier, PyD3XX.FT_OPEN_BY_INDEX, ctypes.byref(Device._Handle))
+#            Device.Handle = Device._Handle.value
+#        else:
+#            PyD3XX._Print("Open(), did not get expected int for index!", PyD3XX.PRINT_ERROR_MAJOR, False)
+#    elif(OpenFlag & PyD3XX.FT_OPEN_BY_SERIAL_NUMBER):
+#        if(isinstance(Identifier, str)):
+#            Status = _DLL.HS_Open(Identifier.encode("ascii"), PyD3XX.FT_OPEN_BY_SERIAL_NUMBER, ctypes.byref(Device._Handle))
+#            Device.Handle = Device._Handle.value
+#        else:
+#            PyD3XX._Print("Open(), did not get expected str for serial number!", PyD3XX.PRINT_ERROR_MAJOR, False)
+#    elif(OpenFlag & PyD3XX.FT_OPEN_BY_DESCRIPTION):
+#        if(isinstance(Identifier, str)):
+#            Status = _DLL.HS_Open(Identifier.encode("ascii"), PyD3XX.FT_OPEN_BY_DESCRIPTION, ctypes.byref(Device._Handle))
+#            Device.Handle = Device._Handle.value
+#        else:
+#            PyD3XX._Print("Open(), did not get expected str for description!", PyD3XX.PRINT_ERROR_MAJOR, False)
+#    else:
+#        PyD3XX._Print("Open(), given invalid open flag!", PyD3XX.PRINT_ERROR_MAJOR, False)
+#    return Status
 
-def Close(Device: PyD3XX.FT_Device) -> int:
-    return _DLL.HS_Close(Device._Handle)
+#def Close(Device: PyD3XX.FT_Device) -> int:
+#    return _DLL.HS_Close(Device._Handle)
 
 def CreateQueue(Device: PyD3XX.FT_Device, Pipe: PyD3XX.FT_Pipe, StreamSize: int, QueueLength: int, Fixed: bool) -> int | Queue:
     if(Device.Handle == "FT_OTHER_ERROR"):

@@ -13,8 +13,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.0.9"
-VERSION_TEST = "1.0.44_kakí_chordí"
+VERSION = "1.1.0"
+VERSION_TEST = "1.0.87_pou_péftoun_báza"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -67,10 +67,9 @@ else: # Default to linux if we didn't catch the platform.
     Platform = "linux"
 
 if Platform == "linux":
-    import gc # Linux needs this imported or else we get seg faults from int.from_bytes() for some reason?
+    import gc
 
 _IsARM = _Platform.machine().startswith('arm') or _Platform.machine().startswith('aarch64')
-_DriverIsWinUSB = False
 
 if ((Platform == "linux") or (Platform == "darwin")): #Fix type sizes for Linux and macOS
     ctypes.c_ulong = ctypes.c_int32
@@ -84,10 +83,12 @@ SIZE_WCHAR = ctypes.sizeof(ctypes.c_wchar)
 SIZE_PTR = ctypes.sizeof(ctypes.c_void_p)
 SIZE_DWORD = ctypes.sizeof(ctypes.wintypes.DWORD)
 SIZE_DEVICE_DESCRIPTOR = (SIZE_CHAR * 10) + (SIZE_SHORT * 4)
-SIZE_CONFIGURATION_DESCRIPTOR = (SIZE_CHAR * 7) + SIZE_SHORT
+SIZE_CONFIGURATION_DESCRIPTOR = (SIZE_CHAR * 2) + (SIZE_SHORT * 2) + (SIZE_CHAR * 4)
 SIZE_INTERFACE_DESCRIPTOR = SIZE_CHAR * 9
 SIZE_STRING_DESCRIPTOR = (SIZE_CHAR * 2) + (SIZE_WCHAR * 256)
 SIZE_ENDPOINT_DESCRIPTOR = (SIZE_CHAR * 5) + SIZE_SHORT
+SIZE_FT_PIPE_TRANSFER_CONF = (SIZE_UINT * 2) + (SIZE_SHORT * 2) + (SIZE_UINT * 2)
+SIZE_FT_TRANSFER_CONF = SIZE_UINT + (SIZE_FT_PIPE_TRANSFER_CONF * 2) + (SIZE_UINT * 3)
 
 # ---| FTD3XX C/C++ HEADER EQUIVALENT STARTS HERE |---
 # THIS IS NOT A FULL EQUIVALENT TO THE FTD3XX HEADER.
@@ -221,6 +222,10 @@ FT_CONFIGURATION_DESCRIPTOR_TYPE = int("0x02", 16)
 FT_STRING_DESCRIPTOR_TYPE = int("0x03", 16)
 FT_INTERFACE_DESCRIPTOR_TYPE = int("0x04", 16)
 FT_ENDPOINT_DESCRIPTOR_TYPE = int("0x05", 16) # THIS IS PYTHON API SPECIFIC.
+
+FT_PIPE_DIR_IN = 0
+FT_PIPE_DIR_OUT = 1
+FT_PIPE_DIR_COUNT = 2
 
 class FT_Buffer:
     def __init__(self, Size: int = None):
@@ -467,26 +472,52 @@ class FT_60XCONFIGURATION:
     _MSIO_Control = 0
     _GPIO_Control = 0
 
+class FT_PipeTransferConf:
+    fPipeNotUsed = False
+    fNonThreadSafeTransfer = False
+    bURBCount = 8
+    wURBBufferCount = 256
+    dwURBBufferSize = 32768
+    dwStreamingSize = 1073741824
+    _fPipeNotUsed = 0
+    _fNonThreadSafeTransfer = 0
+    _bURBCount = 0
+    _wURBBufferCount = 0
+    _dwURBBufferSize = 0
+    _dwStreamingSize = 0
+
+class FT_TransferConf:
+    pipe = "FT_OTHER_ERROR"
+    wStructSize = SIZE_FT_TRANSFER_CONF
+    fStopReadingOnURBUnderrun = False
+    fBitBangMode = False
+    fKeepDeviceSideBufferAfterReopen = False
+    _pipe = [FT_PipeTransferConf(), FT_PipeTransferConf()]
+    _wStructSize = SIZE_FT_TRANSFER_CONF
+    _fStopReadingOnURBUnderrun = 0
+    _fBitBangMode = 0
+    _fKeepDeviceSideBufferAfterReopen = 0
+
 # ---| END OF EQUIVALENT HEADER PORTION |---
 
 # ---| LIBRARY INCLUSION PART |---
 _Python64 = (ctypes.sizeof(ctypes.c_void_p) == 8) # True if 64-bit version of Python is running.
-
-# Check if system has WinUSB D3XX driver installed.
-if Platform == "windows":
-    _DriverIsD3XX = False
-    _DriverIsWinUSB = False
-    # Check for WinUSB
-    try:
+_DriverIsD3XX = False
+_DriverIsWinUSB = False
+if Platform == "windows": # Check if system has WinUSB D3XX driver installed.
+    try: # Check for WinUSB
         _SearchWinUSB = subprocess.Popen("pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
     except:
         _SearchWinUSB = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+    if b"ftd3xxwu.inf" in _SearchWinUSB: # Check raw bytes before trying to decode.
+        _DriverIsWinUSB = True
     try:
-        _DriverIsWinUSB = _SearchWinUSB.decode(locale.getpreferredencoding(False))
-        if "ftd3xxwu.inf" in _DriverIsWinUSB:
-            _DriverIsWinUSB = True
-        else:
-            _DriverIsWinUSB = False
+        if not _DriverIsWinUSB: # If raw byte check failed, try again after decoding.
+            _DriverIsWinUSB = _SearchWinUSB.decode(locale.getpreferredencoding(False)) # Ignore local encoding.
+            if "ftd3xxwu.inf" in _DriverIsWinUSB:
+                _DriverIsWinUSB = True
+            else:
+                _DriverIsWinUSB = False
     except:
         _DriverIsWinUSB = False
     if _DriverIsWinUSB:
@@ -498,12 +529,15 @@ if Platform == "windows":
             _SearchD3XX = subprocess.Popen("pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
         except:
             _SearchD3XX = subprocess.Popen("/windows/sysnative/pnputil /enum-drivers", shell=False, stdout=subprocess.PIPE).stdout.read()
+        if b"ftdibus3.inf" in _SearchD3XX: # Check raw bytes before trying to decode.
+            _DriverIsD3XX = True
         try:
-            _DriverIsD3XX = _SearchD3XX.decode(locale.getpreferredencoding(False))
-            if "ftdibus3.inf" in _DriverIsD3XX:
-                _DriverIsD3XX = True
-            else:
-                _DriverIsD3XX = False
+            if not _DriverIsD3XX: # If raw byte check failed, try again after decoding.
+                _DriverIsD3XX = _SearchD3XX.decode(locale.getpreferredencoding(False))
+                if "ftdibus3.inf" in _DriverIsD3XX:
+                    _DriverIsD3XX = True
+                else:
+                    _DriverIsD3XX = False
         except:
             _DriverIsD3XX = False
         if _DriverIsD3XX:
@@ -512,61 +546,23 @@ if Platform == "windows":
             _Print("DID NOT DETECT ANY DRIVER. Will try using D3XX dynamic library anyways.", PRINT_ERROR_CRITICAL, True)
             _DriverIsD3XX = True
 
-if _Python64:
-    _Print("DETECTED 64-BIT PYTHON ENVIRONMENT: LOADING 64-bit dynamic library file.", PRINT_INFO_START, True)
-    if Platform == "linux":
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM.so"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx.so"))
-    elif Platform == "darwin": # MacOS
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM.dylib"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx.dylib"))
-    else: # We're defaulting to windows if not linux or MacOS.
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU_ARM.dll"))
-        elif _DriverIsWinUSB:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU.dll"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XX.dll"))
-    try:
-        if(Platform == "windows"):
-            _DLL = ctypes.windll.LoadLibrary(_DLL_Path) # Check if 64-bit dll exists in same directory as executable.
-        else:
-            _DLL = ctypes.cdll.LoadLibrary(_DLL_Path) # Check if 64-bit dll exists in same directory as executable.
-    except:
-        print("PyD3XX ERROR: Did not find 64-bit '" + _DLL_Path + "', EXITING.")
-        exit()
-else:
-    _Print("DETECTED 32-BIT PYTHON ENVIRONMENT: LOADING 32-bit dynamic library file.", PRINT_INFO_START, True)
-    if Platform == "linux":
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM_32.so"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_32.so"))
-    elif Platform == "darwin": # MacOS
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_ARM.dylib"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("libftd3xx_32.dylib"))
-    else: # We're defaulting to windows if not linux or MacOS.
-        if _IsARM:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU_32.dll"))
-        elif _DriverIsWinUSB:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XXWU_32.dll"))
-        else:
-            _DLL_Path = str(_files("PyD3XX").joinpath("FTD3XX_32.dll"))
-    try:
-        if(Platform == "windows"): #32-bit WinUSB library requires windll instead of cdll. Doing this to avoid future issues with Windows.
-            _DLL = ctypes.windll.LoadLibrary(_DLL_Path) # Check if 32-bit dll exists in same directory as executable.
-        else:
-            _DLL = ctypes.cdll.LoadLibrary(_DLL_Path) # Check if 32-bit dll exists in same directory as executable.
-    except:
-        print("PyD3XX ERROR: Did not find 32-bit '" + _DLL_Path + "', EXITING.")
-        exit()
-_Print("Successfully loaded FTDI D3XX dynamic library.", PRINT_INFO_START, True)
+# ---| Try to Load Dynamic Library |---
+_LibraryFile = ""
+_LibraryFile += "FTD3XX" if (Platform=="windows") else "libftd3xx"
+_LibraryFile += "WU" if (_DriverIsWinUSB) else ""
+_LibraryFile += ("_ARM" if (_IsARM and (Platform!="darwin")) else "")
+_LibraryFile += ("_32" if not(_Python64) else "")
+_LibraryFile += ".dll" if (Platform=="windows") else (".dylib" if (Platform=="darwin") else ".so")
+_DLL_Path = str(_files("PyD3XX").joinpath(_LibraryFile))
+try:
+    if(Platform == "windows"):
+        _DLL = ctypes.windll.LoadLibrary(_DLL_Path) # Check if dll exists in same directory as executable.
+    else:
+        _DLL = ctypes.cdll.LoadLibrary(_DLL_Path) # Check if dll exists in same directory as executable.
+except:
+    print("PyD3XX ERROR: Did not find '" + _DLL_Path + "', EXITING.")
+    exit()
+_Print("Successfully loaded D3XX: '" + _LibraryFile + "'", PRINT_INFO_START, True)
 
 # ---| Python-Specific Functions |---
 
@@ -574,7 +570,6 @@ _Print("Successfully loaded FTDI D3XX dynamic library.", PRINT_INFO_START, True)
 # Python doesn't natively do "pass by reference" like in C++.
 # So we return multiple values instead of using ctypes.
 # I want Python users to not have to know about or need to use ctypes.
-# Personally, I HATE that pass by reference is not a thing.
 
 def FT_CreateDeviceInfoList() -> int | int:
     DeviceCount = ctypes.c_ulong(0)
@@ -626,7 +621,6 @@ def FT_GetDeviceInfoList(DeviceCount: int) -> int | list[FT_Device]:
         Devices[i].Description = Devices[i]._Description.value.decode("ascii")
         Devices[i].Handle = Devices[i]._Handle.value
     return Status, Devices
-
 
 def FT_GetDeviceInfoDict(DeviceCount: int) -> int | dict[int, FT_Device]:
     ReturnStatus = FT_OK
@@ -1016,12 +1010,6 @@ def FT_ControlTransfer(Device: FT_Device, SetupPacket: FT_SetupPacket, Buffer: F
 def FT_GetVIDPID(Device: FT_Device) -> int | int | int:
     VID = ctypes.c_ushort(0)
     PID = ctypes.c_ushort(0)
-    if(Platform != "windows"): # Linux FT_GetVIDPID is broken. Use alternative.
-        Status, DeviceDescriptor = FT_GetDeviceDescriptor(Device)
-        if(Status != FT_OK):
-            _Print(FT_STATUS_STR[Status] + " | FT_GetVIDPID(), ERROR: Failed to get VID & PID.", PRINT_ERROR_MAJOR, False)
-            return Status, 0, 0
-        return Status, DeviceDescriptor.idVendor, DeviceDescriptor.idProduct
     Status = _DLL.FT_GetVIDPID(Device._Handle, ctypes.byref(VID), ctypes.byref(PID))
     if(Status != FT_OK):
         _Print(FT_STATUS_STR[Status] + " | FT_GetVIDPID(), ERROR: Failed to get VID & PID.", PRINT_ERROR_MAJOR, False)
@@ -1482,4 +1470,106 @@ def FT_ResetDevicePort(Device: FT_Device) -> int:
     Status = _DLL.FT_ResetDevicePort(Device._Handle)
     if(Status != FT_OK):
         _Print(FT_STATUS_STR[Status] + " | FT_ResetDevicePort(), ERROR: Failed to reset device port.", PRINT_ERROR_MAJOR, False)
+    return Status
+
+def FT_GetTransferParams(dwFifoID: int) -> int | FT_TransferConf:
+    Status = FT_OTHER_ERROR
+    NewParams = FT_TransferConf()
+    NewParams.pipe = "FT_OTHER_ERROR"
+    RawSize = SIZE_FT_TRANSFER_CONF
+    _RawAddress = ctypes.c_buffer(RawSize)
+    # Have to set struct size.
+    _RawAddress[0] = ctypes.c_char(SIZE_FT_TRANSFER_CONF & int("0x000000FF", 16))
+    _RawAddress[1] = ctypes.c_char((SIZE_FT_TRANSFER_CONF & int("0x0000FF00", 16)) >> 8)
+    if Platform == "windows":
+        _Print("FT_GetTransferParams() DOES NOT EXIST IN WINDOWS", PRINT_ERROR_CRITICAL, False)
+        return Status, NewParams # Return early.
+    Status = _DLL.FT_GetTransferParams(_RawAddress, dwFifoID)
+    if FT_STATUS_STR[Status] != "FT_OK":
+        _Print(FT_STATUS_STR[Status] + " | Failed to get transfer params!", PRINT_ERROR_MAJOR, False)
+        return Status, NewParams # Return early.
+    NewParams.pipe = [FT_PipeTransferConf(), FT_PipeTransferConf()]
+    NewParams._wStructSize = ctypes.c_ushort.from_address(ctypes.addressof(_RawAddress) + 0)
+    NewParams.wStructSize = NewParams._wStructSize.value
+    NewParams._pipe[FT_PIPE_DIR_IN]._fPipeNotUsed = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + SIZE_UINT)
+    NewParams.pipe[FT_PIPE_DIR_IN].fPipeNotUsed  = NewParams._pipe[FT_PIPE_DIR_IN]._fPipeNotUsed.value != 0
+    NewParams._pipe[FT_PIPE_DIR_IN]._fNonThreadSafeTransfer = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 2))
+    NewParams.pipe[FT_PIPE_DIR_IN].fNonThreadSafeTransfer  = NewParams._pipe[FT_PIPE_DIR_IN]._fNonThreadSafeTransfer.value != 0
+    NewParams._pipe[FT_PIPE_DIR_IN]._bURBCount = ctypes.c_char.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 3))
+    NewParams.pipe[FT_PIPE_DIR_IN].bURBCount  = int.from_bytes(NewParams._pipe[FT_PIPE_DIR_IN]._bURBCount.value)
+    NewParams._pipe[FT_PIPE_DIR_IN]._wURBBufferCount = ctypes.c_ushort.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 3) + SIZE_SHORT)
+    NewParams.pipe[FT_PIPE_DIR_IN].wURBBufferCount  = NewParams._pipe[FT_PIPE_DIR_IN]._wURBBufferCount.value
+    NewParams._pipe[FT_PIPE_DIR_IN]._dwURBBufferSize = ctypes.wintypes.DWORD.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 3) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize  = NewParams._pipe[FT_PIPE_DIR_IN]._dwURBBufferSize.value
+    NewParams._pipe[FT_PIPE_DIR_IN]._dwStreamingSize = ctypes.wintypes.DWORD.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 4) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize  = NewParams._pipe[FT_PIPE_DIR_IN]._dwStreamingSize.value
+    
+    NewParams._pipe[FT_PIPE_DIR_OUT]._fPipeNotUsed = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 5) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_OUT].fPipeNotUsed  = NewParams._pipe[FT_PIPE_DIR_OUT]._fPipeNotUsed.value != 0
+    NewParams._pipe[FT_PIPE_DIR_OUT]._fNonThreadSafeTransfer = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 6) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_OUT].fNonThreadSafeTransfer  = NewParams._pipe[FT_PIPE_DIR_OUT]._fNonThreadSafeTransfer.value != 0
+    NewParams._pipe[FT_PIPE_DIR_OUT]._bURBCount = ctypes.c_char.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 7) + (SIZE_SHORT * 2))
+    NewParams.pipe[FT_PIPE_DIR_OUT].bURBCount  = int.from_bytes(NewParams._pipe[FT_PIPE_DIR_OUT]._bURBCount.value)
+    NewParams._pipe[FT_PIPE_DIR_OUT]._wURBBufferCount = ctypes.c_ushort.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 7) + (SIZE_SHORT * 3))
+    NewParams.pipe[FT_PIPE_DIR_OUT].wURBBufferCount  = NewParams._pipe[FT_PIPE_DIR_OUT]._wURBBufferCount.value
+    NewParams._pipe[FT_PIPE_DIR_OUT]._dwURBBufferSize = ctypes.wintypes.DWORD.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 7) + (SIZE_SHORT * 4))
+    NewParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize  = NewParams._pipe[FT_PIPE_DIR_OUT]._dwURBBufferSize.value
+    NewParams._pipe[FT_PIPE_DIR_OUT]._dwStreamingSize = ctypes.wintypes.DWORD.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 8) + (SIZE_SHORT * 4))
+    NewParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize  = NewParams._pipe[FT_PIPE_DIR_OUT]._dwStreamingSize.value
+    NewParams._fStopReadingOnURBUnderrun = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 9) + (SIZE_SHORT * 4))
+    NewParams.fStopReadingOnURBUnderrun = NewParams._fStopReadingOnURBUnderrun.value != 0
+    NewParams._fBitBangMode = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 10) + (SIZE_SHORT * 4))
+    NewParams.fBitBangMode = NewParams._fBitBangMode.value != 0
+    NewParams._fKeepDeviceSideBufferAfterReopen = ctypes.c_uint.from_address(ctypes.addressof(_RawAddress) + (SIZE_UINT * 11) + (SIZE_SHORT * 4))
+    NewParams.fKeepDeviceSideBufferAfterReopen = NewParams._fKeepDeviceSideBufferAfterReopen.value != 0
+    return Status, NewParams
+
+def FT_SetTransferParams(TransferParams: FT_TransferConf, dwFifoID: int) -> int:
+    Status = FT_OTHER_ERROR
+    if Platform == "windows":
+            _Print("FT_GetTransferParams() DOES NOT EXIST IN WINDOWS", PRINT_ERROR_CRITICAL, False)
+            return Status # Return early.
+    RawSize = TransferParams.wStructSize
+    _RawAddress = ctypes.c_buffer(RawSize)
+    # Have to set struct size.
+    _RawAddress[0] = ctypes.c_char(TransferParams.wStructSize & int("0x000000FF", 16))
+    _RawAddress[1] = ctypes.c_char((TransferParams.wStructSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[SIZE_UINT] = ctypes.c_char(int(TransferParams.pipe[FT_PIPE_DIR_IN].fPipeNotUsed) & int("0x000000FF", 16))
+    _RawAddress[SIZE_UINT + 1] = ctypes.c_char((int(TransferParams.pipe[FT_PIPE_DIR_IN].fPipeNotUsed) & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[(SIZE_UINT * 2)] = ctypes.c_char(int(TransferParams.pipe[FT_PIPE_DIR_IN].fNonThreadSafeTransfer) & int("0x000000FF", 16))
+    _RawAddress[(SIZE_UINT * 2) + 1] = ctypes.c_char((int(TransferParams.pipe[FT_PIPE_DIR_IN].fNonThreadSafeTransfer) & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[(SIZE_UINT * 3)] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_IN].bURBCount & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 3) + SIZE_SHORT)] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_IN].wURBBufferCount & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 3) + SIZE_SHORT) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].wURBBufferCount & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 3) + (SIZE_SHORT * 2))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 3) + (SIZE_SHORT * 2)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 3) + (SIZE_SHORT * 2)) + 2] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize & int("0x0000FF0000", 16)) >> 16)
+    _RawAddress[((SIZE_UINT * 3) + (SIZE_SHORT * 2)) + 3] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwURBBufferSize & int("0x00FF000000", 16)) >> 24)
+    _RawAddress[((SIZE_UINT * 4) + (SIZE_SHORT * 2))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 4) + (SIZE_SHORT * 2)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 4) + (SIZE_SHORT * 2)) + 2] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize & int("0x0000FF0000", 16)) >> 16)
+    _RawAddress[((SIZE_UINT * 4) + (SIZE_SHORT * 2)) + 3] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_IN].dwStreamingSize & int("0x00FF000000", 16)) >> 24)
+
+    _RawAddress[(SIZE_UINT * 5) + (SIZE_SHORT * 2)] = ctypes.c_char(int(TransferParams.pipe[FT_PIPE_DIR_OUT].fPipeNotUsed) & int("0x000000FF", 16))
+    _RawAddress[(SIZE_UINT * 5) + (SIZE_SHORT * 2) + 1] = ctypes.c_char((int(TransferParams.pipe[FT_PIPE_DIR_OUT].fPipeNotUsed) & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[(SIZE_UINT * 6) + (SIZE_SHORT * 2)] = ctypes.c_char(int(TransferParams.pipe[FT_PIPE_DIR_OUT].fNonThreadSafeTransfer) & int("0x000000FF", 16))
+    _RawAddress[(SIZE_UINT * 6) + (SIZE_SHORT * 2) + 1] = ctypes.c_char((int(TransferParams.pipe[FT_PIPE_DIR_OUT].fNonThreadSafeTransfer) & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[(SIZE_UINT * 7) + (SIZE_SHORT * 2)] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_OUT].bURBCount & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 3))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_OUT].wURBBufferCount & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 3)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].wURBBufferCount & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 4))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 4)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 4)) + 2] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize & int("0x0000FF0000", 16)) >> 16)
+    _RawAddress[((SIZE_UINT * 7) + (SIZE_SHORT * 4)) + 3] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwURBBufferSize & int("0x00FF000000", 16)) >> 24)
+    _RawAddress[((SIZE_UINT * 8) + (SIZE_SHORT * 4))] = ctypes.c_char(TransferParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize & int("0x000000FF", 16))
+    _RawAddress[((SIZE_UINT * 8) + (SIZE_SHORT * 4)) + 1] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize & int("0x0000FF00", 16)) >> 8)
+    _RawAddress[((SIZE_UINT * 8) + (SIZE_SHORT * 4)) + 2] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize & int("0x0000FF0000", 16)) >> 16)
+    _RawAddress[((SIZE_UINT * 8) + (SIZE_SHORT * 4)) + 3] = ctypes.c_char((TransferParams.pipe[FT_PIPE_DIR_OUT].dwStreamingSize & int("0x00FF000000", 16)) >> 24)
+    _RawAddress[((SIZE_UINT * 9) + (SIZE_SHORT * 4))] = ctypes.c_char(int(TransferParams.fStopReadingOnURBUnderrun) & int("0x000000FF", 16))
+    # Skip fReserved1.
+    _RawAddress[((SIZE_UINT * 11) + (SIZE_SHORT * 4))] = ctypes.c_char(int(TransferParams.fStopReadingOnURBUnderrun) & int("0x000000FF", 16))
+
+    Status = _DLL.FT_SetTransferParams(_RawAddress, dwFifoID)
+    if FT_STATUS_STR[Status] != "FT_OK":
+        _Print(FT_STATUS_STR[Status] + " | Failed to get transfer params!", PRINT_ERROR_MAJOR, False)
     return Status

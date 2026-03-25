@@ -33,4 +33,3 @@ if Status != PyD3XX.FT_OK:
     exit()
 PyD3XX.FT_Close(Device)
 print("Successfully opened and closed device by description!");
-
