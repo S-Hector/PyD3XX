@@ -13,8 +13,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.1.0"
-VERSION_TEST = "1.0.87_pou_péftoun_báza"
+VERSION = "1.1.1"
+VERSION_TEST = "1.1.0_néo_simádi"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -30,7 +30,7 @@ PRINT_ALL =             int("11111", 2) # Print all messages.
 _PrintLevel = PRINT_NONE # What levels of printing are allowed.
 _PrintQueue = []
 
-def SetPrintLevel(PrintLevel: int):
+def SetPrintLevel(PrintLevel: int) -> int:
     global _PrintLevel
     global _PrintQueue
     _PrintLevel = PrintLevel
@@ -571,12 +571,12 @@ _Print("Successfully loaded D3XX: '" + _LibraryFile + "'", PRINT_INFO_START, Tru
 # So we return multiple values instead of using ctypes.
 # I want Python users to not have to know about or need to use ctypes.
 
-def FT_CreateDeviceInfoList() -> int | int:
+def FT_CreateDeviceInfoList() -> tuple[int, int]:
     DeviceCount = ctypes.c_ulong(0)
     Status = _DLL.FT_CreateDeviceInfoList(ctypes.byref(DeviceCount))
     return Status, DeviceCount.value # Device count is converted to a Python int.  
 
-def FT_GetDeviceInfoDetail(Index: int) -> int | FT_Device:
+def FT_GetDeviceInfoDetail(Index: int) -> tuple[int, FT_Device]:
     ReturnDevice = _CreateDevice()
     Status = _DLL.FT_GetDeviceInfoDetail(Index,
                                 ctypes.byref(ReturnDevice._Flags),
@@ -595,7 +595,7 @@ def FT_GetDeviceInfoDetail(Index: int) -> int | FT_Device:
     ReturnDevice.Handle = ReturnDevice._Handle.value
     return Status, ReturnDevice
 
-def FT_GetDeviceInfoList(DeviceCount: int) -> int | list[FT_Device]:
+def FT_GetDeviceInfoList(DeviceCount: int) -> tuple[int, list[FT_Device]]:
     DeviceCount = ctypes.c_ulong(DeviceCount)
     Devices = []
     SizeOfDeviceNode = (SIZE_ULONG * 3) + SIZE_DWORD + 16 + 32 + SIZE_PTR
@@ -622,7 +622,7 @@ def FT_GetDeviceInfoList(DeviceCount: int) -> int | list[FT_Device]:
         Devices[i].Handle = Devices[i]._Handle.value
     return Status, Devices
 
-def FT_GetDeviceInfoDict(DeviceCount: int) -> int | dict[int, FT_Device]:
+def FT_GetDeviceInfoDict(DeviceCount: int) -> tuple[int, dict[int, FT_Device]]:
     ReturnStatus = FT_OK
     Devices = {}
     for i in range(0, DeviceCount): # Get device info at each index from 0->(DeviceCount - 1).
@@ -632,7 +632,7 @@ def FT_GetDeviceInfoDict(DeviceCount: int) -> int | dict[int, FT_Device]:
             ReturnStatus = FT_OTHER_ERROR, {1: FT_Device()}
     return ReturnStatus, Devices
 
-def FT_ListDevices(IndexCount: int, Flags: int) -> int | (int | str | list[str]):
+def FT_ListDevices(IndexCount: int, Flags: int) -> tuple[int, int] | tuple[int, str] | tuple[int, list[str]]:
     Status = FT_OTHER_ERROR
     ReturnValue = FT_OTHER_ERROR
     if(Flags & FT_LIST_NUMBER_ONLY):
@@ -671,7 +671,7 @@ def FT_ListDevices(IndexCount: int, Flags: int) -> int | (int | str | list[str])
         _Print(FT_STATUS_STR[Status] + " | FT_ListDevices(), WARNING: NOT GIVEN VALID FLAGS.", PRINT_ERROR_MAJOR, False)
     return Status, ReturnValue
 
-def FT_GetPipeInformation(Device: FT_Device, InterfaceIndex: int, PipeIndex: int) -> int | FT_Pipe:
+def FT_GetPipeInformation(Device: FT_Device, InterfaceIndex: int, PipeIndex: int) -> tuple[int, FT_Pipe]:
     NewPipe = FT_Pipe()
     RawSize = SIZE_UINT + SIZE_SHORT + SIZE_SHORT + SIZE_UINT # Overall struct is 4-byte aligned and PipeId is 2-byte aligned.
     NewPipe._RawAddress = ctypes.c_buffer(RawSize)
@@ -690,7 +690,7 @@ def FT_GetPipeInformation(Device: FT_Device, InterfaceIndex: int, PipeIndex: int
     NewPipe.Interval = int.from_bytes(NewPipe._Interval.value, "little")
     return Status, NewPipe
 
-def FT_InitializeOverlapped(Device: FT_Device) -> int | FT_Overlapped:
+def FT_InitializeOverlapped(Device: FT_Device) -> tuple[int, FT_Overlapped]:
     NewOverlap = FT_Overlapped()
     RawSize = SIZE_PTR + SIZE_PTR + SIZE_DWORD + SIZE_DWORD + SIZE_PTR
     NewOverlap._RawAddress = ctypes.c_buffer(RawSize)
@@ -754,7 +754,7 @@ def FT_SetSuspendTimeout(Device: FT_Device, Timeout: int) -> int:
         Status = _DLL.FT_SetSuspendTimeout(Device._Handle, ctypes.c_ulong(Timeout))
     return Status
 
-def FT_GetSuspendTimeout(Device: FT_Device) -> int | int:
+def FT_GetSuspendTimeout(Device: FT_Device) -> tuple[int, int]:
     Status = FT_OTHER_ERROR
     Timeout = ctypes.c_ulong(0)
     if Platform != "windows":
@@ -767,7 +767,7 @@ def FT_SetPipeTimeout(Device: FT_Device, Pipe: FT_Pipe, Timeout: int) -> int:
     Timeout = ctypes.c_ulong(Timeout)
     return _DLL.FT_SetPipeTimeout(Device._Handle, Pipe._PipeID, Timeout)
 
-def FT_GetPipeTimeout(Device: FT_Device, Pipe: FT_Pipe) -> int | int:
+def FT_GetPipeTimeout(Device: FT_Device, Pipe: FT_Pipe) -> tuple[int, int]:
     if Platform != "windows":
         _Print("FT_GetPipeTimeout() DOES NOT EXIST IN LINUX OR MACOS", PRINT_ERROR_CRITICAL, False)
         return FT_OTHER_ERROR, 0
@@ -809,7 +809,7 @@ def _GetDeviceDescriptorHelper(Descriptor: FT_DeviceDescriptor) -> FT_DeviceDesc
     Descriptor.bNumConfigurations = int.from_bytes(Descriptor._bNumConfigurations, "little")
     return Descriptor
 
-def FT_GetDeviceDescriptor(Device: FT_Device) -> int | FT_DeviceDescriptor:
+def FT_GetDeviceDescriptor(Device: FT_Device) -> tuple[int, FT_DeviceDescriptor]:
     Descriptor = FT_DeviceDescriptor()
     Descriptor._RawAddress = ctypes.c_buffer(SIZE_DEVICE_DESCRIPTOR)
     Status = _DLL.FT_GetDeviceDescriptor(Device._Handle, Descriptor._RawAddress)
@@ -839,7 +839,7 @@ def _GetConfigurationDescriptorHelper(Descriptor: FT_ConfigurationDescriptor) ->
     Descriptor.MaxPower = int.from_bytes(Descriptor._MaxPower, "little")
     return Descriptor
 
-def FT_GetConfigurationDescriptor(Device: FT_Device) -> int | FT_ConfigurationDescriptor:
+def FT_GetConfigurationDescriptor(Device: FT_Device) -> tuple[int, FT_ConfigurationDescriptor]:
     Descriptor = FT_ConfigurationDescriptor()
     Descriptor._RawAddress = ctypes.c_buffer(SIZE_CONFIGURATION_DESCRIPTOR)
     Status = _DLL.FT_GetConfigurationDescriptor(Device._Handle, Descriptor._RawAddress)
@@ -871,7 +871,7 @@ def _GetInterfaceDescriptorHelper(Descriptor: FT_InterfaceDescriptor) -> FT_Inte
     Descriptor.iInterface = int.from_bytes(Descriptor._iInterface.value, "little")
     return Descriptor
 
-def FT_GetInterfaceDescriptor(Device: FT_Device, InterfaceIndex) -> int | FT_InterfaceDescriptor:
+def FT_GetInterfaceDescriptor(Device: FT_Device, InterfaceIndex) -> tuple[int, FT_InterfaceDescriptor]:
     Descriptor = FT_InterfaceDescriptor()
     Descriptor._RawAddress = ctypes.c_buffer(SIZE_INTERFACE_DESCRIPTOR)
     Status = _DLL.FT_GetInterfaceDescriptor(Device._Handle, InterfaceIndex, Descriptor._RawAddress)
@@ -891,7 +891,7 @@ def _GetStringDescriptorHelper(Descriptor: FT_StringDescriptor) -> FT_StringDesc
     Descriptor.szString = Descriptor._szString.decode("utf-16")
     return Descriptor
 
-def FT_GetStringDescriptor(Device: FT_Device, StringIndex: int) -> int | FT_StringDescriptor:
+def FT_GetStringDescriptor(Device: FT_Device, StringIndex: int) -> tuple[int, FT_StringDescriptor]:
     Descriptor = FT_StringDescriptor()
     Descriptor._RawAddress = ctypes.c_buffer(SIZE_STRING_DESCRIPTOR)
     Status = _DLL.FT_GetStringDescriptor(Device._Handle, ctypes.c_char(StringIndex), Descriptor._RawAddress)
@@ -924,7 +924,7 @@ class _GetDescriptorHelperClass: # Python match/case statement is lame and requi
     INTERFACE = FT_INTERFACE_DESCRIPTOR_TYPE
     ENDPOINT = FT_ENDPOINT_DESCRIPTOR_TYPE
 
-def FT_GetDescriptor(Device: FT_Device, DescriptorType: int, Index: int) -> int | FT_DeviceDescriptor | FT_InterfaceDescriptor | FT_ConfigurationDescriptor | FT_StringDescriptor | int:
+def FT_GetDescriptor(Device: FT_Device, DescriptorType: int, Index: int) -> tuple[int, FT_DeviceDescriptor, int] | tuple[int, FT_ConfigurationDescriptor, int] | tuple[int, FT_StringDescriptor, int] | tuple[int, FT_InterfaceDescriptor, int]:
     Status = FT_OTHER_ERROR
     Descriptor = FT_OTHER_ERROR
     LengthTransferred = ctypes.c_ulong(0)
@@ -989,7 +989,7 @@ def FT_GetDescriptor(Device: FT_Device, DescriptorType: int, Index: int) -> int 
             _Print(FT_STATUS_STR[Status] + " | FT_GetDescriptor(), WARNING: GIVEN INVALID DESCRIPTOR TYPE.", PRINT_ERROR_MINOR, False)
     return Status, Descriptor, LengthTransferred.value
 
-def FT_ControlTransfer(Device: FT_Device, SetupPacket: FT_SetupPacket, Buffer: FT_Buffer, BufferLength: int) -> int | int:
+def FT_ControlTransfer(Device: FT_Device, SetupPacket: FT_SetupPacket, Buffer: FT_Buffer, BufferLength: int) -> tuple[int, int]:
     Status = FT_OTHER_ERROR
     LengthTransferred = ctypes.c_ulong(0)
     if(Buffer._RawAddress == "FT_OTHER_ERROR"):
@@ -1007,7 +1007,7 @@ def FT_ControlTransfer(Device: FT_Device, SetupPacket: FT_SetupPacket, Buffer: F
         _Print(FT_STATUS_STR[Status] + " | FT_ControlTransfer(), ERROR: Failed to transmit data.", PRINT_ERROR_MAJOR, False)
     return Status, LengthTransferred.value
 
-def FT_GetVIDPID(Device: FT_Device) -> int | int | int:
+def FT_GetVIDPID(Device: FT_Device) -> tuple[int, int, int]:
     VID = ctypes.c_ushort(0)
     PID = ctypes.c_ushort(0)
     Status = _DLL.FT_GetVIDPID(Device._Handle, ctypes.byref(VID), ctypes.byref(PID))
@@ -1027,7 +1027,7 @@ def FT_WriteGPIO(Device: FT_Device, SelectMask: int, Data: int) -> int:
         _Print(FT_STATUS_STR[Status] + " | FT_WriteGPIO(), ERROR: Failed to write to GPIO.", PRINT_ERROR_MAJOR, False)
     return Status
 
-def FT_ReadGPIO(Device: FT_Device) -> int | int:
+def FT_ReadGPIO(Device: FT_Device) -> tuple[int, int]:
     GPIO_Data = ctypes.c_uint32(0)
     Status = _DLL.FT_ReadGPIO(Device._Handle, ctypes.byref(GPIO_Data))
     if(Status != FT_OK):
@@ -1087,7 +1087,7 @@ def FT_ClearNotificationCallback(Device: FT_Device) -> int:
         _Print(FT_STATUS_STR[Status] + " | FT_ClearNotificationCallback(), ERROR: Failed to clear callback function.", PRINT_ERROR_MAJOR, False)
     return Status
 
-def FT_GetChipConfiguration(Device: FT_Device) -> int | FT_60XCONFIGURATION:
+def FT_GetChipConfiguration(Device: FT_Device) -> tuple[int, FT_60XCONFIGURATION]:
     Configuration = FT_60XCONFIGURATION()
     Configuration._RawAddress = ctypes.c_buffer((SIZE_CHAR*(8 + 128)) + (SIZE_SHORT*4) + (SIZE_ULONG*2))
     Status = _DLL.FT_GetChipConfiguration(Device._Handle, Configuration._RawAddress)
@@ -1196,14 +1196,14 @@ def FT_IsDevicePath(Device: FT_Device, DevicePath: str) -> int: # HAVE NOT CONFI
         return FT_OTHER_ERROR
     return _DLL.FT_IsDevicePath(Device._Handle, DevicePath.encode("ascii"))
 
-def FT_GetDriverVersion(Device: FT_Device) -> int | int:
+def FT_GetDriverVersion(Device: FT_Device) -> tuple[int, int]:
     DriverVersion = ctypes.wintypes.DWORD(0)
     Status = _DLL.FT_GetDriverVersion(Device._Handle, ctypes.byref(DriverVersion))
     if(Status != FT_OK):
         _Print(FT_STATUS_STR[Status] + " | FT_GetDriverVersion(), ERROR: Failed to get driver version.", PRINT_ERROR_MAJOR, False)
     return Status, DriverVersion.value
 
-def GetDriverVersion(Device: FT_Device) -> int | str:
+def GetDriverVersion(Device: FT_Device) -> tuple[int, str]:
     Status, DV = FT_GetDriverVersion(Device)
     DriverVersion = FT_STATUS_STR[Status]
     if(Status == FT_OK):
@@ -1218,14 +1218,14 @@ def GetDriverVersion(Device: FT_Device) -> int | str:
             + str(DV & int("0x0000FFFF", 16))
     return Status, DriverVersion
 
-def FT_GetLibraryVersion() -> int | int:
+def FT_GetLibraryVersion() -> tuple[int, int]:
     LibraryVersion = ctypes.wintypes.DWORD(0)
     Status = _DLL.FT_GetLibraryVersion(ctypes.byref(LibraryVersion))
     if(Status != FT_OK):
         _Print(FT_STATUS_STR[Status] + " | FT_GetLibraryVersion(), ERROR: Failed to get library version.", PRINT_ERROR_MAJOR, False)
     return Status, LibraryVersion.value
 
-def GetLibraryVersion() -> int | str:
+def GetLibraryVersion() -> tuple[int, str]:
     Status, LV = FT_GetLibraryVersion()
     LibraryVersion = FT_STATUS_STR[Status]
     if(Status == FT_OK):
@@ -1246,7 +1246,7 @@ def FT_CycleDevicePort(Device: FT_Device) -> int:
         _Print(FT_STATUS_STR[Status] + " | FT_CycleDevicePort(), ERROR: Failed to cycle device port.", PRINT_ERROR_MAJOR, False)
     return Status
 
-def FT_ReadPipe(Device: FT_Device, Pipe_Endpoint, BufferLength: int, Overlapped_TimeoutMs) -> int | FT_Buffer | int:
+def FT_ReadPipe(Device: FT_Device, Pipe_Endpoint, BufferLength: int, Overlapped_TimeoutMs) -> tuple[int, FT_Buffer, int]:
     Status = FT_OTHER_ERROR
     Buffer = FT_Buffer()
     Buffer._RawAddress = ctypes.c_buffer(BufferLength)
@@ -1276,7 +1276,7 @@ def FT_ReadPipe(Device: FT_Device, Pipe_Endpoint, BufferLength: int, Overlapped_
         _Print("FT_ReadPipe(), invalid Overlapped type given, expecting FT_Overlapped or NULL", PRINT_ERROR_MAJOR, False)
     return Status, Buffer, BytesTransferred.value
 
-def FT_ReadPipeEx(Device: FT_Device, Pipe_FIFOindex, BufferLength: int, Overlapped_TimeoutMs) -> int | FT_Buffer | int:
+def FT_ReadPipeEx(Device: FT_Device, Pipe_FIFOindex, BufferLength: int, Overlapped_TimeoutMs) -> tuple[int, FT_Buffer, int]:
     Status = FT_OTHER_ERROR
     Buffer = FT_Buffer()
     Buffer._RawAddress = ctypes.c_buffer(BufferLength)
@@ -1306,7 +1306,7 @@ def FT_ReadPipeEx(Device: FT_Device, Pipe_FIFOindex, BufferLength: int, Overlapp
         _Print("FT_ReadPipeEx(), invalid Overlapped type given, expecting FT_Overlapped or NULL", PRINT_ERROR_MAJOR, False)
     return Status, Buffer, BytesTransferred.value
 
-def FT_ReadPipeAsync(Device: FT_Device, FIFO_Index: int, BufferLength: int, Overlapped) -> int | FT_Buffer | int:
+def FT_ReadPipeAsync(Device: FT_Device, FIFO_Index: int, BufferLength: int, Overlapped) -> tuple[int, FT_Buffer, int]:
     Status = FT_OTHER_ERROR
     Buffer = FT_Buffer()
     Buffer._RawAddress = ctypes.c_buffer(BufferLength)
@@ -1330,7 +1330,7 @@ def FT_ReadPipeAsync(Device: FT_Device, FIFO_Index: int, BufferLength: int, Over
                                     Overlapped._RawAddress)
     return Status, Buffer, BytesTransferred.value
 
-def FT_WritePipe(Device: FT_Device, Pipe_Endpoint, Buffer: FT_Buffer, BufferLength: int, Overlapped_TimeoutMs) -> int | int:
+def FT_WritePipe(Device: FT_Device, Pipe_Endpoint, Buffer: FT_Buffer, BufferLength: int, Overlapped_TimeoutMs) -> tuple[int, int]:
     Status = FT_OTHER_ERROR
     if(isinstance(Buffer._RawAddress, FT_Buffer)):
         _Print("FT_WritePipe(), was not given expected FT_Buffer.", PRINT_ERROR_MAJOR, False)
@@ -1361,7 +1361,7 @@ def FT_WritePipe(Device: FT_Device, Pipe_Endpoint, Buffer: FT_Buffer, BufferLeng
         _Print("FT_WritePipe(), invalid Overlapped type given, expecting FT_Overlapped or NULL", PRINT_ERROR_MAJOR, False)
     return Status, BytesTransferred.value
 
-def FT_WritePipeEx(Device: FT_Device, Pipe_FIFOindex, Buffer: FT_Buffer, BufferLength: int, Overlapped_TimeoutMs) -> int | int:
+def FT_WritePipeEx(Device: FT_Device, Pipe_FIFOindex, Buffer: FT_Buffer, BufferLength: int, Overlapped_TimeoutMs) -> tuple[int, int]:
     Status = FT_OTHER_ERROR
     if(isinstance(Buffer._RawAddress, ctypes.c_char_p)):
         _Print("FT_WritePipeEx(), was not given expected FT_Buffer.", PRINT_ERROR_MAJOR, False)
@@ -1392,7 +1392,7 @@ def FT_WritePipeEx(Device: FT_Device, Pipe_FIFOindex, Buffer: FT_Buffer, BufferL
         _Print("FT_WritePipeEx(), invalid Overlapped type given, expecting FT_Overlapped or NULL", PRINT_ERROR_MAJOR, False)
     return Status, BytesTransferred.value
 
-def FT_WritePipeAsync(Device: FT_Device, FIFO_Index, Buffer: FT_Buffer, BufferLength: int, Overlapped) -> int | int:
+def FT_WritePipeAsync(Device: FT_Device, FIFO_Index, Buffer: FT_Buffer, BufferLength: int, Overlapped) -> tuple[int, int]:
     Status = FT_OTHER_ERROR
     if(isinstance(Buffer._RawAddress, ctypes.c_char_p)):
         _Print("FT_WritePipeEx(), was not given expected FT_Buffer.", PRINT_ERROR_MAJOR, False)
@@ -1417,13 +1417,14 @@ def FT_WritePipeAsync(Device: FT_Device, FIFO_Index, Buffer: FT_Buffer, BufferLe
                                         Overlapped._RawAddress)
     return Status, BytesTransferred.value
 
-def FT_GetOverlappedResult(Device: FT_Device, Overlapped: FT_Overlapped, Wait: bool) -> int | int:
+def FT_GetOverlappedResult(Device: FT_Device, Overlapped: FT_Overlapped, Wait: bool) -> tuple[int, int]:
     LengthTransferred = ctypes.c_ulong(0)
     Status = _DLL.FT_GetOverlappedResult(Device._Handle,
                                             Overlapped._RawAddress,
                                             ctypes.byref(LengthTransferred),
                                             int(Wait))
     return Status, LengthTransferred.value
+
 def FT_ReleaseOverlapped(Device: FT_Device, Overlapped: FT_Overlapped) -> int:
     return _DLL.FT_ReleaseOverlapped(Device._Handle, Overlapped._RawAddress)
 
@@ -1472,7 +1473,7 @@ def FT_ResetDevicePort(Device: FT_Device) -> int:
         _Print(FT_STATUS_STR[Status] + " | FT_ResetDevicePort(), ERROR: Failed to reset device port.", PRINT_ERROR_MAJOR, False)
     return Status
 
-def FT_GetTransferParams(dwFifoID: int) -> int | FT_TransferConf:
+def FT_GetTransferParams(dwFifoID: int) -> tuple[int, FT_TransferConf]:
     Status = FT_OTHER_ERROR
     NewParams = FT_TransferConf()
     NewParams.pipe = "FT_OTHER_ERROR"
