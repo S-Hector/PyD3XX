@@ -1,7 +1,7 @@
 # PyD3XX
 A Python wrapper for the FTDI D3XX library.  
 PyD3XX supports Windows, Linux, and MacOS.  
-All D3XX dynamic library variants are included in this package, so you don't need to include them directly in your project!  
+Most D3XX dynamic library variants are included in this package, so you don't need to include them directly in your project!  
 \^You don't need and should not have any D3XX .dll, .dylib, or .so file in your script's directory.  
 This was designed so the user needs zero ctypes knowledge and not need to import anything besides PyD3XX to interact with D3XX (FT600 & FT601) devices. The user should never have to interact with a ctypes object or method.  
 

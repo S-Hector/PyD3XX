@@ -67,10 +67,11 @@ def GetVersionQueueD3XX() -> str:
 #def Close(Device: PyD3XX.FT_Device) -> int:
 #    return _DLL.HS_Close(Device._Handle)
 
-def CreateQueue(Device: PyD3XX.FT_Device, Pipe: PyD3XX.FT_Pipe, StreamSize: int, QueueLength: int, Fixed: bool) -> int | Queue:
+def CreateQueue(Device: PyD3XX.FT_Device, Pipe: PyD3XX.FT_Pipe, StreamSize: int, QueueLength: int, Fixed: bool) -> tuple[int, Queue]:
+    NewQueue = Queue()
     if(Device.Handle == "FT_OTHER_ERROR"):
         PyD3XX._Print("CreateQueue(), was not given a valid FT_Device.", PyD3XX.PRINT_ERROR_MINOR)
-        return PyD3XX.FT_INVALID_HANDLE
+        return PyD3XX.FT_INVALID_HANDLE, NewQueue
     NewQueue = Queue() #Create point to hold queue.
     Status = _DLL.HS_CreateQueue(Device._Handle, Pipe.PipeID, StreamSize, QueueLength, int(Fixed), ctypes.byref(NewQueue._HS_Queue))
     if(Status == PyD3XX.FT_OK):
@@ -81,7 +82,7 @@ def DestroyQueue(DQueue: Queue) -> int:
     Status = _DLL.HS_DestroyQueue(DQueue._HS_Queue)
     return Status
 
-def ReadQueue(RQueue: Queue, Wait: bool) -> int | PyD3XX.FT_Buffer | int:
+def ReadQueue(RQueue: Queue, Wait: bool) -> tuple[int, PyD3XX.FT_Buffer, int]:
     Buffer = PyD3XX.FT_Buffer()
     Buffer._RawAddress = ctypes.c_buffer(RQueue._StreamSize)
     BytesTransferred = ctypes.c_ulong(0)
