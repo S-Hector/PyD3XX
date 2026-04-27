@@ -6,11 +6,11 @@ import queue # Using solely for input.
 import random # Generate random data.
 
 CHANNEL_COUNT = 4 # How many channels we're streaming.
-STREAM_SIZE = 98*1024 # How many bytes each read pipe call is.
+STREAM_SIZE = 16*1024 # How many bytes each read pipe call is.
 VALUE_SIZE = 4 # How many bytes each counter value is.
 FIXED_TRANSFER_SIZE = False # Fix the transfer size. DO NOT enable unless STREAM_SIZE is a multiple of MaxPacketSize.
-QUEUE_SIZE = 50 # How large our read/write pipe call queues should be.
-WRITE_OUT = False # If true, a write queue will write random data out.
+QUEUE_SIZE = 80 # How large our read/write pipe call queues should be.
+WRITE_OUT = True # If true, a write queue will write random data out.
 CHECK_DATA = False # If true, data received will be compared with data sent.
 
 if((STREAM_SIZE < (VALUE_SIZE*2)) or ((STREAM_SIZE % VALUE_SIZE) != 0)):
@@ -33,6 +33,7 @@ def CheckInput(Input: queue.SimpleQueue):
     return
 
 # ---| Main Code Starts Here |---
+print("QueueD3XX Version = " + PyD3XX.Queue.GetVersionQueueD3XX());
 Status, DeviceCount = PyD3XX.FT_CreateDeviceInfoList() # Create a device info list.
 if Status != PyD3XX.FT_OK:
     print(PyD3XX.FT_STATUS_STR[Status] + " | FAILED TO CREATE DEVICE INFO LIST: ABORTING")
@@ -43,7 +44,30 @@ if (DeviceCount == 0):
     exit()
 
 Status, Device = PyD3XX.FT_GetDeviceInfoDetail(0) # Get info of a device at index 0.
-Status = PyD3XX.Queue.Open(0, PyD3XX.FT_OPEN_BY_INDEX, Device) # Open the device we're using.
+
+# You MUST set transfer parameters correctly for Linux/macOS or PyD3XX.Queue will not work.
+# This is a limitation of the Linux/macOS library.
+if(PyD3XX.Platform != "windows"):
+    Status, TransferParams = PyD3XX.FT_GetTransferParams(0)
+    if Status != PyD3XX.FT_OK:
+        print(PyD3XX.FT_STATUS_STR[Status] + " | FAILED TO GET TRANSFER PARAMS: ABORTING")
+        exit()
+    TransferParams.pipe[PyD3XX.FT_PIPE_DIR_OUT].bURBCount = QUEUE_SIZE
+    TransferParams.pipe[PyD3XX.FT_PIPE_DIR_IN].bURBCount = QUEUE_SIZE
+    TransferParams.pipe[PyD3XX.FT_PIPE_DIR_OUT].wURBBufferCount = 1
+    TransferParams.pipe[PyD3XX.FT_PIPE_DIR_IN].wURBBufferCount = 1
+    TransferParams.pipe[PyD3XX.FT_PIPE_DIR_OUT].dwURBBufferSize = STREAM_SIZE
+    TransferParams.pipe[PyD3XX.FT_PIPE_DIR_IN].dwURBBufferSize = STREAM_SIZE
+    TransferParams.pipe[PyD3XX.FT_PIPE_DIR_OUT].dwStreamingSize = STREAM_SIZE
+    TransferParams.pipe[PyD3XX.FT_PIPE_DIR_IN].dwStreamingSize = STREAM_SIZE
+    for i in range(CHANNEL_COUNT):
+        Status = PyD3XX.FT_SetTransferParams(TransferParams, i)
+        if Status != PyD3XX.FT_OK:
+            print(PyD3XX.FT_STATUS_STR[Status] + " | FAILED TO SET TRANSFER PARAMS: ABORTING")
+            exit()
+    print("Successfully set transfer parameters!")
+
+Status = PyD3XX.FT_Create(0, PyD3XX.FT_OPEN_BY_INDEX, Device) # Open the device we're using.
 if Status != PyD3XX.FT_OK:
     print(PyD3XX.FT_STATUS_STR[Status] + " | FAILED TO OPEN DEVICE: ABORTING")
     exit()
@@ -77,7 +101,7 @@ if(WRITE_OUT): # Create Write queues and initiate writing out QUEUE_SIZE times.
             print(PyD3XX.FT_STATUS_STR[Status] + " | FAILED TO CREATE WRITE QUEUE!")
             exit()
         for j in range(QUEUE_SIZE): # Issue writes.
-            Status = PyD3XX.Queue.WriteQueue(CallQueue[i], WriteBuffer, True)
+            Status = PyD3XX.Queue.WriteQueue(CallQueue[i], WriteBuffer, False)
             if(Status != PyD3XX.FT_OK):
                 print(PyD3XX.FT_STATUS_STR[Status] + " | FAILED TO WRITE TO QUEUE!")
                 exit()
@@ -158,6 +182,6 @@ if False:
     print("Max Latency = " + MaxLatency + " us\t| Average Latency = " + AverageLatency + " us")
 
 Status = PyD3XX.Queue.FreeQueueD3XX()
-Status = PyD3XX.Queue.Close(Device)
+Status = PyD3XX.FT_Close(Device)
 if(Status == PyD3XX.FT_OK):
     print("Program ended and device closed successfully.")
