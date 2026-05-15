@@ -6,7 +6,7 @@ import queue # Using solely for input.
 import random # Generate random data.
 
 CHANNEL_COUNT = 4 # How many channels we're streaming.
-STREAM_SIZE = 16*1024 # How many bytes each read pipe call is.
+STREAM_SIZE = 98*1024 # How many bytes each read pipe call is.
 VALUE_SIZE = 4 # How many bytes each counter value is.
 FIXED_TRANSFER_SIZE = False # Fix the transfer size. DO NOT enable unless STREAM_SIZE is a multiple of MaxPacketSize.
 QUEUE_SIZE = 80 # How large our read/write pipe call queues should be.

@@ -33,6 +33,7 @@ if(Status == PyD3XX.FT_OK):
 else:
     print(PyD3XX.FT_STATUS_STR[Status] + " | Failed to read data!: ABORTING")
     exit()
+
 WriteBuffer = PyD3XX.FT_Buffer.from_int(int.from_bytes(ReadBuffer.Value(), "little") + 1)
 if(PyD3XX.Platform == "linux") or (PyD3XX.Platform == "darwin"):
     Status, BytesWrote = PyD3XX.FT_WritePipe(Device, int("0x02", 16), WriteBuffer, 1, 0)

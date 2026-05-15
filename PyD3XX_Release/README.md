@@ -9,3 +9,8 @@ This was designed so the user needs zero ctypes knowledge and not need to import
 The PyD3XX Programmer's Guide is available on the GitHub repo.
 Please give the guide a read as it documents all of PyD3XX.
 GitHub Repo: https://github.com/S-Hector/PyD3XX
+
+## Licensing
+The PyD3XX package is licensed under MIT.
+The underlying D3XX libraries distributed with this package fall under FTDI's license.
+FTDI's License: https://ftdichip.com/driver-licence-terms-details/

@@ -89,7 +89,7 @@ for i in range (1, 8, 2): # Read data from all four channels.
 
 for i in range (1, 8, 2): # Wait for read request to complete for all four channels.
     Status = PyD3XX.FT_IO_INCOMPLETE
-    while(Status == PyD3XX.FT_IO_INCOMPLETE):
+    while(Status != PyD3XX.FT_OK):
         Status, BytesTransferred = PyD3XX.FT_GetOverlappedResult(Device, Overlaps[i], False)
         time.sleep(0.5)
         print(str(BytesTransferred) + "/" + str(DataSize) + " bytes transferred so far at pipe index " + str(i) + "!")

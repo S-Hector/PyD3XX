@@ -1,8 +1,8 @@
 import PyD3XX
 
-CHANNEL_COUNT = 4 # How many channels we're streaming.
-STREAM_SIZE = 100000 # How many bytes each read pipe call is.
-VALUE_SIZE = 2 # How many bytes each counter value is.
+CHANNEL_COUNT = 1 # How many channels we're streaming.
+STREAM_SIZE = 10000 # How many bytes each read pipe call is.
+VALUE_SIZE = 4 # How many bytes each counter value is.
 # Total counter values = STREAM_SIZE / VALUE_SIZE
 FIXED_TRANSFER_SIZE = False # Fix the transfer size. DO NOT enable unless STREAM_SIZE is a multiple of MaxPacketSize.
 LOOP_COUNT = 1 # Set to True to loop forever. Set to an integer X value to loop X times.

@@ -1,32 +1,25 @@
+# Created By: Hector Soto (hector.soto@ftdichip.com)
+# Streams incoming data from a FIFO master to disk.
+# Expects FIFO master to never have a session underrun or throws an error otherwise.
+
 import PyD3XX
 import time
 import threading
 import queue
+PyD3XX.SetPrintLevel(PyD3XX.PRINT_NONE) # Make PyD3XX not print anything.
 
-CHANNEL_COUNT = 4 # How many channels we're streaming.
-STREAM_SIZE = 98 * 1024 # How many bytes each read pipe call is.
-VALUE_SIZE = 4 # How many bytes each counter value is.
-# Total counter values = STREAM_SIZE / VALUE_SIZE
+CHANNEL_COUNT = 1 # How many channels we're streaming.
+STREAM_SIZE = 98*1024 # How many bytes each read pipe call is.
+OUTPUT_FILE_NAME = "Output"
+OUTPUT_FILE_EXTENSION = ".txt"
+# File name will be OUTPUT_FILE_NAME + Channel + OUTPUT_FILE_EXTENSION
+
 FIXED_TRANSFER_SIZE = False # Fix the transfer size. DO NOT enable unless STREAM_SIZE is a multiple of MaxPacketSize.
-CHECK_INCREMENT = False # Stop streaming if a counter value is not greater than the previous by 1.
-# ^ The increment check DESTROYS performance. Only check for troubleshooting.
-PRINT_COUNT = False # Set to true if you want to print every single value.
 QUEUE_SIZE = 200 # How many read pipe calls should we have queued up?
-# ^ Note on Linux/macOS having too many calls queued can lead to libusb/memory errors.
-# QUEUE_SIZE does affect performance and tops out. A larger QUEUE_SIZE does improve performance.
 
-if(CHECK_INCREMENT) and ((STREAM_SIZE < (VALUE_SIZE*2)) or ((STREAM_SIZE % VALUE_SIZE) != 0)):
-    print("ERROR: STREAM_SIZE must be divisible by " + str(VALUE_SIZE) + " and " + str(VALUE_SIZE*2) + " or greater.")
-    exit()
 if(CHANNEL_COUNT > 4):
     print("ERROR: CHANNEL_COUNT must be 4 or less.")
     exit()
-
-def GetValue(Buffer: PyD3XX.FT_Buffer, Index: int) -> int:
-    Value = 0
-    for i in range(VALUE_SIZE):
-        Value += (Buffer.Value()[Index + i]) << (i*8)
-    return Value
 
 # ---| Main Code Starts Here |---
 Status, DeviceCount = PyD3XX.FT_CreateDeviceInfoList() # Create a device info list.
@@ -44,9 +37,6 @@ if Status != PyD3XX.FT_OK:
     print(PyD3XX.FT_STATUS_STR[Status] + " | FAILED TO OPEN DEVICE: ABORTING")
     exit()
 
-if(Device.Flags == PyD3XX.FT_FLAGS_SUPERSPEED):
-    print("Operating at SUPERSPEED")
-
 Pipes = {}
 for i in range(1, (CHANNEL_COUNT * 2), 2): # Get IN pipes.
     Status, Pipes[i] = PyD3XX.FT_GetPipeInformation(Device, 1, i)
@@ -59,6 +49,14 @@ if(FIXED_TRANSFER_SIZE):
     if Status != PyD3XX.FT_OK:
         print("FAILED TO SET STREAM SIZE FOR ALL IN PIPES. " + PyD3XX.FT_STATUS_STR[Status])
         exit()
+
+OutputFiles = {}
+for i in range(CHANNEL_COUNT):
+    # Set the buffering value to 20 MiB so disk writes only occur when 20MiB is in memory.
+    # By default without doing that ^, small writes happen more frequently which destroys disk performance.
+    # For disks, larger writes ~= greater performance.
+    # Just like USB, larger data transfers ~= greater performance.
+    OutputFiles[i] = open(OUTPUT_FILE_NAME + str(i) + OUTPUT_FILE_EXTENSION, "wb", buffering=1024*1024*20)
 
 def CheckInput(Input: queue.SimpleQueue):
     input("Press anything to stop reading.\n")
@@ -112,6 +110,7 @@ while(True):
     Status = QR_Data[0]
     ReadBuffer = QR_Data[1]
     Overlaps = QR_Data[2]
+    j = 0
     for i in range(1, (CHANNEL_COUNT * 2), 2): # Wait for reads to finish.
         Status = PyD3XX.FT_IO_INCOMPLETE
         while(Status != PyD3XX.FT_OK):
@@ -119,23 +118,10 @@ while(True):
         Status = PyD3XX.FT_ReleaseOverlapped(Device, Overlaps[i]) # Free overlaps.
         if(BytesTransferred != STREAM_SIZE):
             print("ERROR: Read " + str(BytesTransferred) + " bytes, when " + str(STREAM_SIZE) + " bytes were expected!")
+        OutputFiles[j].write(bytes(ReadBuffer[i].Value()))
+        j = j + 1
     # ONE read pipe call for ALL channels finished.
     # We wait for one read pipe call to complete for EVERY channel before checking the next wave of data.
-    if CHECK_INCREMENT:
-        for i in range(1, (CHANNEL_COUNT * 2), 2): # Check values read.
-            if(PRINT_COUNT): # Print first value.
-                    CurrentValue = GetValue(ReadBuffer[i], 0)
-                    print("CH" + str(round((i+1)/2)) + "[" + str(0) + "]: " + str(CurrentValue))
-            for j in range(VALUE_SIZE, STREAM_SIZE, VALUE_SIZE):
-                LastValue = GetValue(ReadBuffer[i], j - VALUE_SIZE)
-                CurrentValue = GetValue(ReadBuffer[i], j)
-                if(PRINT_COUNT):
-                    print("CH" + str(round((i+1)/2)) + "[" + str(j) + "]: " + str(CurrentValue))
-                if(CurrentValue != (LastValue + 1)): # Value is not bigger by 1.
-                    if((CurrentValue == 0) and (LastValue == ((2 ** (VALUE_SIZE*8)) - 1))): # Account for counter overflow.
-                        continue # There is no error if the counter just overflowed.
-                    print("ERROR CH" + str(round((i+1)/2)) + "[" + str(j) + "]: LV = " + str(LastValue) + " CV = " + str(CurrentValue))
-                    exit()
     EndTime = time.perf_counter() # Get end time of loop.
     DataTransferred += CHANNEL_COUNT * STREAM_SIZE # Add how much data we transferred/processed (assuming no errors).
     ElapsedTime = EndTime - StartTime
@@ -155,6 +141,9 @@ while(ReadQueue.qsize() > 0):
     Overlaps = QR_Data[2]
     for i in range(1, (CHANNEL_COUNT * 2), 2): # Free overlaps.
         Status = PyD3XX.FT_ReleaseOverlapped(Device, Overlaps[i])
+
+for i in range(CHANNEL_COUNT):
+    OutputFiles[i].close()
 
 Status = PyD3XX.FT_Close(Device)
 if(Status == PyD3XX.FT_OK):

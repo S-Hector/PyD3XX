@@ -13,8 +13,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.1.2"
-VERSION_TEST = "1.1.2_diorthóste_ti_diarroí"
+VERSION = "1.1.3"
+VERSION_TEST = "1.1.3_ádeia_leitourgías"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
