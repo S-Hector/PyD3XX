@@ -9,7 +9,7 @@ CHANNEL_COUNT = 4 # How many channels we're streaming.
 STREAM_SIZE = 98*1024 # How many bytes each read pipe call is.
 VALUE_SIZE = 4 # How many bytes each counter value is.
 FIXED_TRANSFER_SIZE = False # Fix the transfer size. DO NOT enable unless STREAM_SIZE is a multiple of MaxPacketSize.
-QUEUE_SIZE = 80 # How large our read/write pipe call queues should be.
+QUEUE_SIZE = 200 # How large our read/write pipe call queues should be.
 WRITE_OUT = True # If true, a write queue will write random data out.
 CHECK_DATA = False # If true, data received will be compared with data sent.
 

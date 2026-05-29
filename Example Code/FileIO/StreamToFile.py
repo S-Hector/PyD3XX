@@ -114,7 +114,7 @@ while(True):
     for i in range(1, (CHANNEL_COUNT * 2), 2): # Wait for reads to finish.
         Status = PyD3XX.FT_IO_INCOMPLETE
         while(Status != PyD3XX.FT_OK):
-            Status, BytesTransferred = PyD3XX.FT_GetOverlappedResult(Device, Overlaps[i], False)
+            Status, BytesTransferred = PyD3XX.FT_GetOverlappedResult(Device, Overlaps[i], True)
         Status = PyD3XX.FT_ReleaseOverlapped(Device, Overlaps[i]) # Free overlaps.
         if(BytesTransferred != STREAM_SIZE):
             print("ERROR: Read " + str(BytesTransferred) + " bytes, when " + str(STREAM_SIZE) + " bytes were expected!")
