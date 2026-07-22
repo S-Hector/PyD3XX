@@ -13,8 +13,8 @@ from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.1.4"
-VERSION_TEST = "1.1.4_eilikriná_geloío"
+VERSION = "1.1.5"
+VERSION_TEST = "1.1.5_voítheia_xadérfi"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -1573,4 +1573,14 @@ def FT_SetTransferParams(TransferParams: FT_TransferConf, dwFifoID: int) -> int:
     Status = _DLL.FT_SetTransferParams(_RawAddress, dwFifoID)
     if FT_STATUS_STR[Status] != "FT_OK":
         _Print(FT_STATUS_STR[Status] + " | Failed to set transfer params!", PRINT_ERROR_MAJOR, False)
+    return Status
+
+def FT_SetVIDPID(dwVID: int, dwPID: int) -> int:
+    Status = FT_OTHER_ERROR
+    if Platform == "windows":
+            _Print("FT_SetVIDPID() DOES NOT EXIST IN WINDOWS", PRINT_ERROR_CRITICAL, False)
+            return Status # Return early.
+    Status = _DLL.FT_SetVIDPID(dwVID, dwPID)
+    if FT_STATUS_STR[Status] != "FT_OK":
+        _Print(FT_STATUS_STR[Status] + " | Failed to add VID:PID combination!", PRINT_ERROR_MAJOR, False)
     return Status

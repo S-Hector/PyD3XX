@@ -3,7 +3,7 @@ import time
 import threading
 import queue
 
-CHANNEL_COUNT = 4 # How many channels we're streaming.
+CHANNEL_COUNT = 1 # How many channels we're streaming.
 STREAM_SIZE = 98 * 1024 # How many bytes each read pipe call is.
 VALUE_SIZE = 4 # How many bytes each counter value is.
 # Total counter values = STREAM_SIZE / VALUE_SIZE
