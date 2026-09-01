@@ -1,5 +1,7 @@
 import PyD3XX
 
+print("PyD3XX Version = " + PyD3XX.VERSION)
+print("PyD3XX Test Version = " + PyD3XX.VERSION_TEST)
 Status, DeviceCount = PyD3XX.FT_CreateDeviceInfoList() # Create a device info list.
 if Status != PyD3XX.FT_OK:
     print(PyD3XX.FT_STATUS_STR[Status] + " | FAILED TO CREATE DEVICE INFO LIST: ABORTING")
