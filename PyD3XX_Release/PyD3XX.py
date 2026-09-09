@@ -7,14 +7,16 @@ import typing
 import platform as _Platform
 import subprocess
 import locale
+import os
+import shutil
 
 from importlib.resources import files as _files
 from sys import platform as Platform
 
 # ---| Python Library Specific Definitions |---
 
-VERSION = "1.1.6"
-VERSION_TEST = "1.1.6_parécho_ádeia"
+VERSION = "1.2.0"
+VERSION_TEST = "1.2.3_ástocho_sout"
 
 PRINT_NONE =            int("00000", 2) # Print no messages.
 PRINT_ERROR_CRITICAL =  int("00001", 2) # Print critical error messages.
@@ -1583,4 +1585,77 @@ def FT_SetVIDPID(dwVID: int, dwPID: int) -> int:
     Status = _DLL.FT_SetVIDPID(dwVID, dwPID)
     if FT_STATUS_STR[Status] != "FT_OK":
         _Print(FT_STATUS_STR[Status] + " | Failed to add VID:PID combination!", PRINT_ERROR_MAJOR, False)
+    return Status
+
+# Linux specific functions.
+
+def _linux_find_usb_matches(Directory: str, VID: int | None=None, PID: int | None=None, Manufacturer: str | None=None, Description: str | None=None, SerialNumber: str | None=None, FindAll: bool=True) -> list[str]:
+    Status = FT_OK
+    DeviceListString = subprocess.Popen(["ls", Directory], stdout=subprocess.PIPE).stdout.read()
+    DeviceListString = DeviceListString.decode("utf-8").split()
+    DeviceList = []
+    for Device in DeviceListString:
+        if((Device != "bind") and (Device != "unbind") and (Device != "module") and (Device != "uevent") and ("usb" not in Device)):
+            DeviceList.append(Device)
+    DeviceListLength = len(DeviceList)
+    Matches = []
+    for i in range(DeviceListLength):
+        VendorID = open(Directory + DeviceList[i] + "/../idVendor", "r").read().strip()
+        if(isinstance(VID, int)):
+            if(VID != int(VendorID, 16)):
+                continue # Device does not match, skip.
+        ProductID = open(Directory + DeviceList[i] + "/../idProduct", "r").read().strip()
+        if(isinstance(PID, int)):
+            if(PID != int(ProductID, 16)):
+                continue # Device does not match, skip.
+        Man = open(Directory + DeviceList[i] + "/../manufacturer", "r").read().strip()
+        if(isinstance(Manufacturer, str)):
+            if(Man != Manufacturer):
+                continue # Device does not match, skip.
+        Des = open(Directory + DeviceList[i] + "/../product", "r").read().strip()
+        if(isinstance(Description, str)):
+            if(Des != Description):
+                continue # Device does not match, skip.
+        Ser = open(Directory + DeviceList[i] + "/../serial", "r").read().strip()
+        if(isinstance(SerialNumber, str)):
+            if(Ser != SerialNumber):
+                continue # Device does not match, skip.
+        Matches.append(DeviceList[i])
+        if not FindAll: # Only find first device match. Default is find all matching devices.
+            break
+    return Matches
+
+def GrantUserAccess(VID: int | None=None, PID: int | None=None, Manufacturer: str | None=None, Description: str | None=None, SerialNumber: str | None=None, GrantAll: bool=True, RequestGUI: bool=True) -> int:
+    if(Platform != "linux"):
+        return FT_NOT_SUPPORTED
+    Status = FT_OK
+    Matches = _linux_find_usb_matches("/sys/bus/usb/devices/", VID, PID, Manufacturer, Description, SerialNumber, GrantAll)
+    if(len(Matches) == 0):
+        return FT_DEVICE_NOT_FOUND
+    DeviceNodeList = []
+    for Device in Matches: # Get list of device nodes.
+        Device = Device.split(':')[0] # Remove extra tag at end we don't need.
+        DeviceNode = subprocess.Popen(["udevadm", "info", "--query=property", "--path=/sys/bus/usb/devices/" + Device], shell=False, stdout=subprocess.PIPE).stdout.read().decode("ascii")
+        DeviceNode = DeviceNode[(DeviceNode.index("DEVNAME=") + len("DEVNAME=")):] # Get to DEVNAME field for device node.
+        DeviceNode = DeviceNode[:DeviceNode.index('\n')] # Strip everything after field.
+        if(len(DeviceNode)): # Only add device node to list if it has some length.
+            DeviceNodeList.append(DeviceNode)
+    if(len(DeviceNodeList) == 0):
+        return FT_DEVICE_NOT_FOUND
+    if(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) and RequestGUI:
+        if shutil.which("pkexec") is not None: # Launch GUI prompt for admin access to bind device to driver.
+            GrantProcess = subprocess.Popen(["pkexec", "sh"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=None, text=True)
+            pass # Unbind graphically
+        else:
+            GrantProcess = subprocess.Popen(["sudo", "sh"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=None, text=True)
+            pass #Unbind terminally
+    else:
+        GrantProcess = subprocess.Popen(["sudo", "sh"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=None, text=True)
+        pass #Unbind terminally
+    for Node in DeviceNodeList:
+        #print("Granted: " + Node)
+        GrantProcess.stdin.write("chmod 666 " + Node + "\n")
+        GrantProcess.stdin.flush()
+    GrantProcess.stdin.close()
+    GrantProcess.wait()
     return Status
